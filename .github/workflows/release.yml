@@ -1,0 +1,34 @@
+name: Release
+
+on:
+  push:
+    branches:
+      - master
+
+permissions:
+  contents: write
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Build tarball
+        run: tar -czf easy-deploy.tar.gz -C src .
+
+      - name: Upload to Release
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: release-${{ github.run_number }}
+          name: release-${{ github.run_number }}
+          body: |
+            master @ ${{ github.sha }}
+
+            安装：
+            ```bash
+            curl -fsSL -o easy-deploy.tar.gz https://github.com/wifi504/easy-deploy/releases/latest/download/easy-deploy.tar.gz && mkdir -p easy-deploy && tar -xzf easy-deploy.tar.gz -C easy-deploy && rm -f easy-deploy.tar.gz
+            ```
+          files: easy-deploy.tar.gz
+          make_latest: true
