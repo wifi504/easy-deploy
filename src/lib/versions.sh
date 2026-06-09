@@ -15,8 +15,9 @@ _ensure_versions_file() {
 
 _with_versions_lock() {
   _ensure_versions_file
+  mkdir -p "${DEPLOY_ROOT}/data"
   (
-    eval "exec ${VERSIONS_LOCK_FD}>\"${VERSIONS_FILE}\""
+    eval "exec ${VERSIONS_LOCK_FD}>\"${VERSIONS_LOCK_FILE}\""
     flock "${VERSIONS_LOCK_FD}"
     "$@"
   )

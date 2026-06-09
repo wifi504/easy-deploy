@@ -135,6 +135,7 @@ fi
 
 if ask_yn "是否删除 easy-deploy 运行时数据（data/、logs/）?"; then
   rm -rf "${DEPLOY_ROOT}/data/easy-deploy.lock" \
+    "${DEPLOY_ROOT}/data/current-versions.lock" \
     "${DEPLOY_ROOT}/data/current-versions.json" \
     "${DEPLOY_ROOT}/data/temp/"* \
     "${DEPLOY_ROOT}/logs/"

@@ -11,6 +11,7 @@ cd "$DEPLOY_ROOT"
 
 CONFIG_FILE="${DEPLOY_ROOT}/easy-deploy-config.yaml"
 VERSIONS_FILE="${DEPLOY_ROOT}/data/current-versions.json"
+VERSIONS_LOCK_FILE="${DEPLOY_ROOT}/data/current-versions.lock"
 LOCK_FILE="${DEPLOY_ROOT}/data/easy-deploy.lock"
 TEMP_DIR="${DEPLOY_ROOT}/data/temp"
 YQ_BIN="${YQ_BIN:-/usr/local/bin/yq}"
