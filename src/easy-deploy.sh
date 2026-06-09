@@ -64,7 +64,10 @@ if ! acquire_deploy_lock; then
 fi
 
 export LOG_DIR
-nohup bash "${DEPLOY_ROOT}/scripts/easy-deploy-agent.sh" "${DEPLOY_LOCK_FD}" &
+# 勿继承入口 tee 的 stdout，否则 agent 占住管道会导致 easy-deploy 前台卡住不退出
+nohup bash "${DEPLOY_ROOT}/scripts/easy-deploy-agent.sh" "${DEPLOY_LOCK_FD}" \
+  >>"${LOG_DIR}/easy-deploy-agent.sh.log" 2>&1 &
 disown
 
 log_msg "已成功开始执行自动化部署，日志目录：${LOG_DIR}"
+exit 0
