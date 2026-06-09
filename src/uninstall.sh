@@ -4,6 +4,7 @@
 set -euo pipefail
 
 DEPLOY_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+INSTALL_INFO="${DEPLOY_ROOT}/install.info"
 
 ask_yn() {
   local prompt="$1"
@@ -19,6 +20,15 @@ else
 fi
 
 EASY_DEPLOY_CMD="/usr/local/bin/easy-deploy"
+
+is_preexisting_pkg() {
+  local pkg="$1"
+  [[ -f "$INSTALL_INFO" ]] && grep -qx "preexisting_pkg=${pkg}" "$INSTALL_INFO"
+}
+
+is_preexisting_yq_local() {
+  [[ -f "$INSTALL_INFO" ]] && grep -qx 'preexisting_yq_local=1' "$INSTALL_INFO"
+}
 
 unregister_command() {
   if [[ ! -e "$EASY_DEPLOY_CMD" && ! -L "$EASY_DEPLOY_CMD" ]]; then
@@ -56,6 +66,10 @@ detect_pkg_manager() {
 
 remove_apt() {
   local pkg="$1"
+  if is_preexisting_pkg "$pkg"; then
+    echo "跳过 apt 包 ${pkg}（install.info：安装前已存在）"
+    return 0
+  fi
   if dpkg -l "$pkg" >/dev/null 2>&1; then
     if ask_yn "是否卸载 apt 包 ${pkg}?"; then
       $SUDO apt-get remove -y "$pkg"
@@ -65,6 +79,10 @@ remove_apt() {
 
 remove_yum() {
   local mgr="$1" pkg="$2"
+  if is_preexisting_pkg "$pkg"; then
+    echo "跳过 ${mgr} 包 ${pkg}（install.info：安装前已存在）"
+    return 0
+  fi
   if rpm -q "$pkg" >/dev/null 2>&1; then
     if ask_yn "是否卸载 ${mgr} 包 ${pkg}?"; then
       $SUDO "$mgr" remove -y "$pkg"
@@ -99,8 +117,10 @@ case "$pkg_mgr" in
     ;;
 esac
 
-if command -v yq >/dev/null 2>&1 && [[ -f /usr/local/bin/yq ]]; then
-  if ask_yn "是否删除 /usr/local/bin/yq（手动安装的）?"; then
+if [[ -f /usr/local/bin/yq ]]; then
+  if is_preexisting_yq_local; then
+    echo "跳过 /usr/local/bin/yq（install.info：安装前已存在）"
+  elif ask_yn "是否删除 /usr/local/bin/yq（由 install.sh 从 GitHub 安装的）?"; then
     $SUDO rm -f /usr/local/bin/yq
   fi
 fi
@@ -116,6 +136,10 @@ fi
 
 if ask_yn "是否删除 easy-deploy-config.yaml?"; then
   rm -f "${DEPLOY_ROOT}/easy-deploy-config.yaml"
+fi
+
+if ask_yn "是否删除 install.info?"; then
+  rm -f "$INSTALL_INFO"
 fi
 
 echo "卸载助手执行完毕"

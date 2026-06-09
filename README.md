@@ -42,7 +42,7 @@ cd easy-deploy
 ./install.sh
 ```
 
-`install.sh` 会安装依赖，并把 `easy-deploy` 注册到 `/usr/local/bin/`（以后任意目录可直接跑 `easy-deploy`）。
+`install.sh` 会安装依赖，并把 `easy-deploy` 注册到 `/usr/local/bin/`（以后任意目录可直接跑 `easy-deploy`）。同时会在同目录生成 `install.info`，记录安装前机器上已有的依赖；卸载时会自动跳过这些包。
 
 ### 配置
 

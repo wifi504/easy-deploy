@@ -6,6 +6,8 @@ set -euo pipefail
 DEPLOY_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 cd "$DEPLOY_ROOT"
 
+INSTALL_INFO="${DEPLOY_ROOT}/install.info"
+
 log() {
   echo "[install] $*"
 }
@@ -27,6 +29,50 @@ detect_pkg_manager() {
   else
     echo unknown
   fi
+}
+
+is_apt_pkg_installed() {
+  dpkg -l "$1" 2>/dev/null | grep -q '^ii'
+}
+
+is_yum_pkg_installed() {
+  rpm -q "$1" >/dev/null 2>&1
+}
+
+# 安装前写入 install.info，记录原本就有的依赖（仅首次创建，不覆盖）
+record_preexisting_deps() {
+  if [[ -f "$INSTALL_INFO" ]]; then
+    log "install.info 已存在，跳过记录"
+    return 0
+  fi
+
+  local mgr="$1"
+  {
+    echo "pkg_mgr=${mgr}"
+    case "$mgr" in
+      apt)
+        local pkg
+        for pkg in curl jq yq unzip tar p7zip-full; do
+          if is_apt_pkg_installed "$pkg"; then
+            echo "preexisting_pkg=${pkg}"
+          fi
+        done
+        ;;
+      dnf|yum)
+        local pkg
+        for pkg in curl jq yq unzip tar p7zip; do
+          if is_yum_pkg_installed "$pkg"; then
+            echo "preexisting_pkg=${pkg}"
+          fi
+        done
+        ;;
+    esac
+    if [[ -f /usr/local/bin/yq ]]; then
+      echo "preexisting_yq_local=1"
+    fi
+  } >"$INSTALL_INFO"
+
+  log "已写入 install.info（记录安装前已存在的依赖）"
 }
 
 install_packages_apt() {
@@ -95,13 +141,19 @@ log "已创建 data/ 与 logs/ 目录"
 
 pkg_mgr="$(detect_pkg_manager)"
 case "$pkg_mgr" in
-  apt) install_packages_apt ;;
-  dnf) install_packages_yum dnf ;;
-  yum) install_packages_yum yum ;;
+  apt|dnf|yum) ;;
   *)
     log "不支持的包管理器，请手动安装: curl jq yq unzip tar 7z"
     exit 1
     ;;
+esac
+
+record_preexisting_deps "$pkg_mgr"
+
+case "$pkg_mgr" in
+  apt) install_packages_apt ;;
+  dnf) install_packages_yum dnf ;;
+  yum) install_packages_yum yum ;;
 esac
 
 log "脚本依赖已安装"
