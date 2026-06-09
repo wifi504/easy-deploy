@@ -201,7 +201,7 @@ docker pull ${host}/${owner}/${name}:latest
 **uninstall.sh**
 
 - 列出可卸载包，逐项 `[y/N]` 询问
-- 询问是否删除 config/数据，默认保留
+- 询问是否删除运行时数据（data/、logs/），默认保留；不删除 easy-deploy-config.yaml
 
 ### 14. easy-deploy-config.yaml
 

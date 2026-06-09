@@ -64,12 +64,10 @@ if ! acquire_deploy_lock; then
 fi
 
 export LOG_DIR
-# 勿继承入口 tee 的 stdout，否则 agent 占住管道会导致 easy-deploy 前台卡住不退出
+#  stdout/stderr 接到 /dev/null，避免继承入口 tee 导致前台卡住；日志由 agent 内 logging.sh 写入
 nohup bash "${DEPLOY_ROOT}/scripts/easy-deploy-agent.sh" "${DEPLOY_LOCK_FD}" \
-  >>"${LOG_DIR}/easy-deploy-agent.sh.log" 2>&1 &
+  </dev/null >/dev/null 2>&1 &
 disown
 
 log_msg "已成功开始执行自动化部署，日志目录：${LOG_DIR}"
-agent_log="${LOG_DIR}/easy-deploy-agent.sh.log"
-log_msg "你可以使用 tail -f ${agent_log} 来实时查看部署 Agent 日志"
 exit 0

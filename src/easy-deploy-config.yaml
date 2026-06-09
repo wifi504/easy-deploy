@@ -1,41 +1,32 @@
-# 配置Gitea的访问方式
 gitea:
-  url: http://10.10.10.11:10088
-  # token 支持两种写法：
-  # 1. ${GITEA_TOKEN}  —— 从环境变量读取（推荐，token 不进 git）
-  # 2. 直接写明文 token 字符串
+  url: http://127.0.0.1:3000
   token: ${GITEA_TOKEN}
 
-# 日志
 logs:
-  max-log-history: 10 # logs目录下滚动覆盖，只保留最新的多少次执行的日志，配置为0时，不保留日志，配置为-1时，无上限
+  max-log-history: 10
 
-# 脚本运行所需的一些配置
 scripts:
-  # Nginx Reload 命令（存在 frontend-dist 服务时必填）
-  reload-nginx-cmd: "docker exec nginx-webui nginx -s reload"
+  reload-nginx-cmd: "nginx -s reload"
 
-# CD流程要处理的服务
-# type 与 strategy 必须配对：generic→frontend-dist，docker-container→docker-compose
 services:
 
-  - name: frontend-admin
+  - name: frontend
     package:
-      owner: Troy
       type: generic
-      name: my-frontend-admin
+      owner: OwnerName
+      name: PackageName
       file: dist.zip
     deploy:
       strategy: frontend-dist
-      target: /data/nginx/web/my_website
+      target: /data/nginx/web/my-website
 
-  - name: order-service
+  - name: docker-compose-backend
     package:
-      owner: Troy
       type: docker-container
-      name: my-order-service
+      owner: OwnerName
+      name: PackageName
     deploy:
       strategy: docker-compose
-      compose: /data/docker/compose/order-service/docker-compose.yml
-      service: order-service
+      compose: /data/docker/compose/my-backend-1/docker-compose.yml
+      service: backend
       started-check-seconds: 3

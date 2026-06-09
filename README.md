@@ -4,16 +4,18 @@
 
 ## 项目结构介绍
 
-这个仓库分两块：
+此项目也算是 Vibe Coding 的一个小实践，`AI Rate > 90%`
 
-- **`prompt/`**：设计文档，怎么跑、怎么配，写在这里
-- **`src/`**：真正要部署到机器上的脚本（Release 里打包的就是这一坨）
+仓库分两块：
 
-你在部署机上看到的目录，解压后长这样（就是 `src/` 里的东西）：
+- **`prompt/`**：生成运维脚本的提示词文档和 plan 文档
+- **`src/`**：部署到服务器的脚本（Release 打包的目录）
+
+在部署机上看到的目录，解压后结构如下（就是 `src/` 里的内容）：
 
 ```text
 easy-deploy/
-├── easy-deploy.sh              # 入口，无参直接跑
+├── easy-deploy.sh              # 入口
 ├── easy-deploy-config.yaml     # 核心配置
 ├── install.sh                  # 装依赖，并注册 easy-deploy 命令
 ├── uninstall.sh                # 先取消命令注册，再逐项 y/n 卸依赖
@@ -29,27 +31,59 @@ easy-deploy/
 
 ### 安装
 
-在部署机上，随便找个目录，一条命令把最新版拉下来：
+在部署机上，随便找个目录，推荐 `/opt/` ，直接使用如下命令下载最新版本到当前目录的 `easy-deploy/`：
 
 ```bash
 curl -fsSL -o easy-deploy.tar.gz https://github.com/wifi504/easy-deploy/releases/latest/download/easy-deploy.tar.gz && mkdir -p easy-deploy && tar -xzf easy-deploy.tar.gz -C easy-deploy && rm -f easy-deploy.tar.gz
 ```
 
-解压完成后进入目录：
+下载完成后进入目录：
 
 ```bash
 cd easy-deploy
-./install.sh
+bash install.sh
 ```
 
 `install.sh` 会安装依赖，并把 `easy-deploy` 注册到 `/usr/local/bin/`（以后任意目录可直接跑 `easy-deploy`）。同时会在同目录生成 `install.info`，记录安装前机器上已有的依赖；卸载时会自动跳过这些包。
 
+### 卸载
+
+非常绿色的运维脚本，想卸依赖用 `bash uninstall.sh`，会先取消 `easy-deploy` 命令注册，再逐个包问你删除吗 y/n，避免误删你在使用此运维脚本后，自己写了别的脚本，用到的一些相同依赖。
+
+最后，如果彻底不想要了，把 `easy-deploy` 这个目录删掉即可。
+
+### 更新
+
+一般情况下不需要更新，**除非遇到了严重的 bug，请提 issue**。
+
+`data/` 可选备份：主要是已部署版本的记录，删掉后下次运行会视作所有任务都要重新跑一遍；一般只保留 `easy-deploy-config.yaml` 即可。
+
+在**部署目录的上一级**（例如 `/opt/`，与初次安装时相同）执行以下命令，可**保留配置并更新脚本到最新版**；`uninstall.sh` 会逐项询问 y/n，按提示选择即可：
+
+```bash
+cd easy-deploy
+bash uninstall.sh
+mv easy-deploy-config.yaml ../
+cd ..
+rm -rf easy-deploy
+curl -fsSL -o easy-deploy.tar.gz https://github.com/wifi504/easy-deploy/releases/latest/download/easy-deploy.tar.gz && mkdir -p easy-deploy && tar -xzf easy-deploy.tar.gz -C easy-deploy && rm -f easy-deploy.tar.gz
+cd easy-deploy
+bash install.sh
+mv ../easy-deploy-config.yaml .
+```
+
+若要安装**指定版本**，把上面 `curl` 里的 `latest` 换成 release Tag，例如 `release-99`：
+
+```bash
+curl -fsSL -o easy-deploy.tar.gz https://github.com/wifi504/easy-deploy/releases/download/release-99/easy-deploy.tar.gz && mkdir -p easy-deploy && tar -xzf easy-deploy.tar.gz -C easy-deploy && rm -f easy-deploy.tar.gz
+```
+
 ### 配置
 
-1. 编辑 `easy-deploy-config.yaml`，把 Gitea、services、部署路径等改成你的环境
+1. 编辑 `easy-deploy-config.yaml`，详见 [Easy Deploy Config 文档](./config.doc.md)
 2. 若 token 写的是 `${GITEA_TOKEN}`，先 `export GITEA_TOKEN=你的token`
 3. docker 要 `docker login` 到你的 Gitea 制品库
-4. gitea 的接口自己请求一下看看通不通
+4. Gitea 的接口自己请求一下看看通不通，一般没问题，只要 Token **放开所有的 `读` 和 package 的 `读/写`**
 
 ### 运行
 
@@ -57,24 +91,20 @@ cd easy-deploy
 easy-deploy
 ```
 
-就这一条，不要带参数。跑起来后会**立刻回到命令行**（部署在后台执行），并打印本次日志目录；接着会提示类似：
+就这一条，如此 Easy！运行后会**回到命令行**（部署在后台执行），并打印本次日志目录，例如：
 
 ```text
 [2026-06-09 10:42:00] 已成功开始执行自动化部署，日志目录：/opt/easy-deploy/logs/deploy-20260609-104200
-[2026-06-09 10:42:00] 你可以使用 tail -f /opt/easy-deploy/logs/deploy-20260609-104200/easy-deploy-agent.sh.log 来实时查看部署 Agent 日志
 ```
 
-复制第二行里的 `tail -f ...` 即可跟踪 Agent；各 service 的 worker / package / deploy 日志也在同一 `deploy-*` 目录下。
-
-想卸依赖用 `./uninstall.sh`，会先取消 `easy-deploy` 命令注册，再逐个包问你 y/n，避免误删别的脚本还在用的东西。
+Agent 及各 service 的 worker / package / deploy 日志都在该 `deploy-*` 目录下。
 
 ## 特别说明
 
 - **运行环境**：Linux + Bash 4+，依赖 curl、jq、yq、unzip、tar、7z、docker、docker compose（V2）
-- **并发**：同一时刻只会有一个部署流程在跑（flock 锁）；如果拿不到锁，说明已经有一趟在跑了
+- **并发**：同一时刻只会有一个部署流程在跑（flock 锁）；如果拿不到锁，说明后台有部署脚本在运行
 - **锁残留**：脚本进程被杀、机器断电之类的情况，可能留下 `data/easy-deploy.lock`，删了这个文件再跑就行
 - **版本跳过**：制品版本没变会返回 `skip_deploy`，不会重复部署，也不会 reload nginx
-- **详细规格**：见 [prompt/deploy.md](prompt/deploy.md)
 
 ## 开源协议
 

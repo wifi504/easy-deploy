@@ -142,12 +142,6 @@ if ask_yn "是否删除 easy-deploy 运行时数据（data/、logs/）?"; then
   echo "运行时数据已删除"
 fi
 
-if ask_yn "是否删除 easy-deploy-config.yaml?"; then
-  rm -f "${DEPLOY_ROOT}/easy-deploy-config.yaml"
-fi
-
-if ask_yn "是否删除 install.info?"; then
-  rm -f "$INSTALL_INFO"
-fi
+rm -f "$INSTALL_INFO"
 
 echo "卸载助手执行完毕"
