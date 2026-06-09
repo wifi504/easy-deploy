@@ -99,6 +99,8 @@ easy-deploy
 
 Agent 及各 service 的 worker / package / deploy 日志都在该 `deploy-*` 目录下。
 
+**Tips：手动运行部署脚本能正常工作以后，可以添加到定时任务自动化执行**
+
 ## 特别说明
 
 - **运行环境**：Linux + Bash 4+，依赖 curl、jq、yq、unzip、tar、7z、docker、docker compose（V2）
