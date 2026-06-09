@@ -27,6 +27,8 @@ source "${DEPLOY_ROOT}/lib/config.sh"
 source "${DEPLOY_ROOT}/lib/lock.sh"
 # shellcheck source=lib/versions.sh
 source "${DEPLOY_ROOT}/lib/versions.sh"
+# shellcheck source=lib/hooks.sh
+source "${DEPLOY_ROOT}/lib/hooks.sh"
 
 cleanup_agent() {
   release_deploy_lock
@@ -43,6 +45,7 @@ if [[ "$_lock_inherited" -eq 0 ]]; then
 fi
 
 log_msg "easy-deploy-agent 已启动"
+run_hook on-agent-start
 
 versions_ensure
 
@@ -75,7 +78,10 @@ if [[ -d "$TEMP_DIR" ]]; then
 fi
 
 if [[ "$failures" -gt 0 ]]; then
+  export hook_fail_count="$failures"
+  run_hook on-agent-fail
   log_msg "agent 结束，${failures} 个 worker 失败"
 else
+  run_hook on-agent-success
   log_msg "agent 已成功结束"
 fi

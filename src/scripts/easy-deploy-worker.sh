@@ -72,7 +72,10 @@ case "$pkg_type" in
     deploy_script="${DEPLOY_ROOT}/scripts/deploy-frontend-dist.sh"
     deploy_log="${LOG_DIR}/deploy-frontend-dist.sh.${SERVICE_NAME}.log"
     export EASY_DEPLOY_PAYLOAD_MODE=1
-    bash "$deploy_script" "$SERVICE_NAME" "$artifact_path" "$version" 2>>"$deploy_log"
+    if ! bash "$deploy_script" "$SERVICE_NAME" "$artifact_path" "$version" 2>>"$deploy_log"; then
+      unset EASY_DEPLOY_PAYLOAD_MODE
+      die "service ${SERVICE_NAME} 的 deploy 步骤失败"
+    fi
     unset EASY_DEPLOY_PAYLOAD_MODE
     ;;
   docker-container)
@@ -80,7 +83,10 @@ case "$pkg_type" in
     deploy_script="${DEPLOY_ROOT}/scripts/deploy-docker-compose.sh"
     deploy_log="${LOG_DIR}/deploy-docker-compose.sh.${SERVICE_NAME}.log"
     export EASY_DEPLOY_PAYLOAD_MODE=1
-    bash "$deploy_script" "$SERVICE_NAME" "$image_digest" 2>>"$deploy_log"
+    if ! bash "$deploy_script" "$SERVICE_NAME" "$image_digest" 2>>"$deploy_log"; then
+      unset EASY_DEPLOY_PAYLOAD_MODE
+      die "service ${SERVICE_NAME} 的 deploy 步骤失败"
+    fi
     unset EASY_DEPLOY_PAYLOAD_MODE
     ;;
 esac

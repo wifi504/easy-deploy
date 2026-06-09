@@ -13,6 +13,7 @@ fi
 
 SERVICE_NAME="$1"
 image_digest="$2"
+export hook_service_name="$SERVICE_NAME"
 
 # shellcheck source=lib/common.sh
 source "${DEPLOY_ROOT}/lib/common.sh"
@@ -20,6 +21,8 @@ source "${DEPLOY_ROOT}/lib/common.sh"
 source "${DEPLOY_ROOT}/lib/config.sh"
 # shellcheck source=lib/versions.sh
 source "${DEPLOY_ROOT}/lib/versions.sh"
+# shellcheck source=lib/hooks.sh
+source "${DEPLOY_ROOT}/lib/hooks.sh"
 
 log_deploy() {
   echo "[$(TZ=Asia/Shanghai date '+%Y-%m-%d %H:%M:%S')] $*" >&2
@@ -60,33 +63,35 @@ rollback() {
   remove_image_by_digest "$image_digest"
 }
 
+_fail_deploy() {
+  export hook_deploy_errmsg="$1"
+  run_hook on-deploy-fail
+  log_deploy "$1"
+  rollback
+  rm -f "$backup_file"
+  exit 1
+}
+
+run_hook on-deploy-start
+
 log_deploy "更新 compose 服务 ${compose_service} 的 image 为 ${image_ref}"
 "$YQ_BIN" eval -i ".services[\"${compose_service}\"].image = \"${image_ref}\"" "$compose_file"
 
 log_deploy "重启 compose: ${compose_file}"
 if ! compose_down_up; then
-  log_deploy "docker compose down/up 失败"
-  rollback
-  rm -f "$backup_file"
-  exit 1
+  _fail_deploy "docker compose down/up 失败"
 fi
 
 container_id="$(docker compose -f "$compose_file" ps -q "$compose_service")"
 if [[ -z "$container_id" ]]; then
-  log_deploy "找不到 service ${compose_service} 对应的容器"
-  rollback
-  rm -f "$backup_file"
-  exit 1
+  _fail_deploy "找不到 service ${compose_service} 对应的容器"
 fi
 
 initial_status="$(docker inspect --format='{{.State.Status}}' "$container_id")"
 initial_restarts="$(docker inspect --format='{{.RestartCount}}' "$container_id")"
 
 if [[ "$initial_status" != "running" ]]; then
-  log_deploy "up 后容器未运行 (status=${initial_status})"
-  rollback
-  rm -f "$backup_file"
-  exit 1
+  _fail_deploy "up 后容器未运行 (status=${initial_status})"
 fi
 
 log_deploy "等待 ${check_seconds} 秒进行稳定性检查"
@@ -96,14 +101,12 @@ final_status="$(docker inspect --format='{{.State.Status}}' "$container_id")"
 final_restarts="$(docker inspect --format='{{.RestartCount}}' "$container_id")"
 
 if [[ "$final_status" != "running" ]] || (( final_restarts > initial_restarts )); then
-  log_deploy "容器不稳定 (status=${final_status}, 重启次数 ${initial_restarts}->${final_restarts})"
-  rollback
-  rm -f "$backup_file"
-  exit 1
+  _fail_deploy "容器不稳定 (status=${final_status}, 重启次数 ${initial_restarts}->${final_restarts})"
 fi
 
 versions_set "$SERVICE_NAME" "$image_digest"
 remove_image_by_digest "$old_version"
 rm -f "$backup_file"
 
+run_hook on-deploy-success
 log_deploy "service ${SERVICE_NAME} docker compose 部署完成"

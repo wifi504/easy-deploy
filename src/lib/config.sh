@@ -87,3 +87,7 @@ reload_nginx_cmd() {
 max_log_history() {
   cfg_raw '.logs."max-log-history"'
 }
+
+hook_cmd() {
+  cfg_raw ".hooks.\"$1\""
+}

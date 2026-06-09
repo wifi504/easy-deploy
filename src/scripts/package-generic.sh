@@ -12,6 +12,7 @@ if [[ $# -ne 1 ]]; then
 fi
 
 SERVICE_NAME="$1"
+export hook_service_name="$SERVICE_NAME"
 
 # shellcheck source=lib/common.sh
 source "${DEPLOY_ROOT}/lib/common.sh"
@@ -19,9 +20,18 @@ source "${DEPLOY_ROOT}/lib/common.sh"
 source "${DEPLOY_ROOT}/lib/config.sh"
 # shellcheck source=lib/versions.sh
 source "${DEPLOY_ROOT}/lib/versions.sh"
+# shellcheck source=lib/hooks.sh
+source "${DEPLOY_ROOT}/lib/hooks.sh"
 
 log_pkg() {
   echo "[$(TZ=Asia/Shanghai date '+%Y-%m-%d %H:%M:%S')] $*" >&2
+}
+
+_fail_package() {
+  export hook_package_errmsg="$1"
+  run_hook on-package-fail
+  log_pkg "$1"
+  exit 1
 }
 
 owner="$(service_package_field "$SERVICE_NAME" owner)"
@@ -30,23 +40,23 @@ pkg_file="$(service_package_field "$SERVICE_NAME" file)"
 token="$(gitea_token)"
 base_url="$(gitea_url)"
 
+run_hook on-package-start
+
 latest_url="${base_url}/api/v1/packages/${owner}/generic/${pkg_name}/-/latest"
 log_pkg "查询最新版本: ${latest_url}"
 
-latest_json="$(curl -sf -H "Authorization: token ${token}" "$latest_url")" || {
-  log_pkg "获取最新版本失败"
-  exit 1
-}
+latest_json="$(curl -sf -H "Authorization: token ${token}" "$latest_url")" || \
+  _fail_package "获取 Gitea 最新版本失败"
 
 version="$(echo "$latest_json" | jq -r '.version // empty')"
 if [[ -z "$version" ]]; then
-  log_pkg "无法从 Gitea 响应中提取 version"
-  exit 1
+  _fail_package "无法从 Gitea 响应中提取 version"
 fi
 
 current="$(versions_get "$SERVICE_NAME")"
 if [[ "$version" == "$current" ]]; then
   log_pkg "版本未变 (${version})，跳过部署"
+  run_hook on-package-skip
   echo "skip_deploy"
   exit 0
 fi
@@ -59,11 +69,12 @@ dest_file="${dest_dir}/${pkg_file}"
 
 log_pkg "下载制品: ${download_url} -> ${dest_file}"
 curl -sf -H "Authorization: token ${token}" -o "$dest_file" "$download_url" || {
-  log_pkg "下载制品文件失败"
   rm -rf "$dest_dir"
-  exit 1
+  _fail_package "下载制品文件失败"
 }
 
 log_pkg "已下载版本 ${version}"
+export hook_package_version_tag="$version"
+run_hook on-package-success
 echo "$version"
 echo "$dest_file"

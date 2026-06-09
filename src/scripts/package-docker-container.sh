@@ -12,6 +12,7 @@ if [[ $# -ne 1 ]]; then
 fi
 
 SERVICE_NAME="$1"
+export hook_service_name="$SERVICE_NAME"
 
 # shellcheck source=lib/common.sh
 source "${DEPLOY_ROOT}/lib/common.sh"
@@ -19,9 +20,18 @@ source "${DEPLOY_ROOT}/lib/common.sh"
 source "${DEPLOY_ROOT}/lib/config.sh"
 # shellcheck source=lib/versions.sh
 source "${DEPLOY_ROOT}/lib/versions.sh"
+# shellcheck source=lib/hooks.sh
+source "${DEPLOY_ROOT}/lib/hooks.sh"
 
 log_pkg() {
   echo "[$(TZ=Asia/Shanghai date '+%Y-%m-%d %H:%M:%S')] $*" >&2
+}
+
+_fail_package() {
+  export hook_package_errmsg="$1"
+  run_hook on-package-fail
+  log_pkg "$1"
+  exit 1
 }
 
 owner="$(service_package_field "$SERVICE_NAME" owner)"
@@ -30,11 +40,12 @@ host="$(gitea_host)"
 image_ref="${host}/${owner}/${pkg_name}:latest"
 repo_prefix="${host}/${owner}/${pkg_name}"
 
+run_hook on-package-start
+
 log_pkg "拉取镜像: ${image_ref}"
 pull_output="$(docker pull "$image_ref" 2>&1)" || {
-  log_pkg "docker pull 失败"
   echo "$pull_output" >&2
-  exit 1
+  _fail_package "docker pull 失败"
 }
 echo "$pull_output" >&2
 
@@ -45,13 +56,13 @@ if [[ -z "$digest" ]]; then
 fi
 
 if [[ -z "$digest" || "$digest" != sha256:* ]]; then
-  log_pkg "无法确定镜像 Digest"
-  exit 1
+  _fail_package "无法确定镜像 Digest"
 fi
 
 current="$(versions_get "$SERVICE_NAME")"
 if [[ "$digest" == "$current" ]]; then
   log_pkg "Digest 未变 (${digest})，跳过部署"
+  run_hook on-package-skip
   echo "skip_deploy"
   exit 0
 fi
@@ -76,4 +87,6 @@ for img_id in "${repo_image_ids[@]}"; do
 done
 
 log_pkg "新 Digest: ${digest}"
+export hook_package_version_tag="$digest"
+run_hook on-package-success
 echo "$digest"
