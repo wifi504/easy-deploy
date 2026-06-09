@@ -61,7 +61,7 @@ rollback() {
 }
 
 log_deploy "更新 compose 服务 ${compose_service} 的 image 为 ${image_ref}"
-yq eval -i ".services[\"${compose_service}\"].image = \"${image_ref}\"" "$compose_file"
+"$YQ_BIN" eval -i ".services[\"${compose_service}\"].image = \"${image_ref}\"" "$compose_file"
 
 log_deploy "重启 compose: ${compose_file}"
 if ! compose_down_up; then

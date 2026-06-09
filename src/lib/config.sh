@@ -4,12 +4,16 @@
 # shellcheck source=lib/common.sh
 source "${DEPLOY_ROOT}/lib/common.sh"
 
+if ! resolve_yq_bin; then
+  die "未找到 mikefarah/yq（Go 版）。请重新运行 install.sh，勿使用 apt 的 Python 版 yq"
+fi
+
 cfg() {
-  yq eval "$1" "$CONFIG_FILE"
+  "$YQ_BIN" eval "$1" "$CONFIG_FILE"
 }
 
 cfg_raw() {
-  yq eval -r "$1" "$CONFIG_FILE"
+  "$YQ_BIN" eval -r "$1" "$CONFIG_FILE"
 }
 
 resolve_token() {

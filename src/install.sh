@@ -7,6 +7,10 @@ DEPLOY_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 cd "$DEPLOY_ROOT"
 
 INSTALL_INFO="${DEPLOY_ROOT}/install.info"
+YQ_TARGET="/usr/local/bin/yq"
+
+# shellcheck source=lib/common.sh
+source "${DEPLOY_ROOT}/lib/common.sh"
 
 log() {
   echo "[install] $*"
@@ -52,22 +56,29 @@ record_preexisting_deps() {
     case "$mgr" in
       apt)
         local pkg
-        for pkg in curl jq yq unzip tar p7zip-full; do
+        for pkg in curl jq unzip tar p7zip-full; do
           if is_apt_pkg_installed "$pkg"; then
             echo "preexisting_pkg=${pkg}"
           fi
         done
+        # Python 版 yq 若已通过 apt 安装，卸载时不应误删
+        if is_apt_pkg_installed yq; then
+          echo "preexisting_pkg=yq"
+        fi
         ;;
       dnf|yum)
         local pkg
-        for pkg in curl jq yq unzip tar p7zip; do
+        for pkg in curl jq unzip tar p7zip; do
           if is_yum_pkg_installed "$pkg"; then
             echo "preexisting_pkg=${pkg}"
           fi
         done
+        if is_yum_pkg_installed yq; then
+          echo "preexisting_pkg=yq"
+        fi
         ;;
     esac
-    if [[ -f /usr/local/bin/yq ]]; then
+    if [[ -x "$YQ_TARGET" ]] && is_mikefarah_yq "$YQ_TARGET"; then
       echo "preexisting_yq_local=1"
     fi
   } >"$INSTALL_INFO"
@@ -75,40 +86,40 @@ record_preexisting_deps() {
   log "已写入 install.info（记录安装前已存在的依赖）"
 }
 
+mark_installed_yq_local() {
+  [[ -f "$INSTALL_INFO" ]] || return 0
+  if grep -qx 'preexisting_yq_local=1' "$INSTALL_INFO"; then
+    return 0
+  fi
+  if ! grep -qx 'installed_yq_local=1' "$INSTALL_INFO"; then
+    echo "installed_yq_local=1" >>"$INSTALL_INFO"
+  fi
+}
+
+ensure_mikefarah_yq() {
+  if [[ -x "$YQ_TARGET" ]] && is_mikefarah_yq "$YQ_TARGET"; then
+    log "mikefarah/yq 已就绪: ${YQ_TARGET}"
+    return 0
+  fi
+
+  if command -v yq >/dev/null 2>&1 && ! is_mikefarah_yq "$(command -v yq)"; then
+    log "检测到 Python 版 yq（kislyuk），easy-deploy 需要 mikefarah/yq"
+  fi
+
+  log "从 GitHub 安装 mikefarah/yq 到 ${YQ_TARGET}..."
+  install_mikefarah_yq "$YQ_TARGET" "$SUDO"
+  mark_installed_yq_local
+  log "mikefarah/yq 安装完成"
+}
+
 install_packages_apt() {
   $SUDO apt-get update
   $SUDO apt-get install -y curl jq unzip tar p7zip-full
-  if ! command -v yq >/dev/null 2>&1; then
-    $SUDO apt-get install -y yq || {
-      log "从 GitHub 安装 yq..."
-      local arch yq_bin
-      arch="$(uname -m)"
-      case "$arch" in
-        x86_64) yq_bin=yq_linux_amd64 ;;
-        aarch64|arm64) yq_bin=yq_linux_arm64 ;;
-        *) log "不支持自动安装 yq 的架构: ${arch}"; return 1 ;;
-      esac
-      curl -fsSL "https://github.com/mikefarah/yq/releases/latest/download/${yq_bin}" -o /tmp/yq
-      $SUDO install -m 0755 /tmp/yq /usr/local/bin/yq
-    }
-  fi
 }
 
 install_packages_yum() {
   local mgr="$1"
   $SUDO "$mgr" install -y curl jq unzip tar p7zip p7zip-plugins
-  if ! command -v yq >/dev/null 2>&1; then
-    log "从 GitHub 安装 yq..."
-    local arch yq_bin
-    arch="$(uname -m)"
-    case "$arch" in
-      x86_64) yq_bin=yq_linux_amd64 ;;
-      aarch64|arm64) yq_bin=yq_linux_arm64 ;;
-      *) log "不支持自动安装 yq 的架构: ${arch}"; return 1 ;;
-    esac
-    curl -fsSL "https://github.com/mikefarah/yq/releases/latest/download/${yq_bin}" -o /tmp/yq
-    $SUDO install -m 0755 /tmp/yq /usr/local/bin/yq
-  fi
 }
 
 check_docker() {
@@ -143,7 +154,7 @@ pkg_mgr="$(detect_pkg_manager)"
 case "$pkg_mgr" in
   apt|dnf|yum) ;;
   *)
-    log "不支持的包管理器，请手动安装: curl jq yq unzip tar 7z"
+    log "不支持的包管理器，请手动安装: curl jq unzip tar 7z，并安装 mikefarah/yq"
     exit 1
     ;;
 esac
@@ -155,6 +166,8 @@ case "$pkg_mgr" in
   dnf) install_packages_yum dnf ;;
   yum) install_packages_yum yum ;;
 esac
+
+ensure_mikefarah_yq
 
 log "脚本依赖已安装"
 

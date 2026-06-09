@@ -30,6 +30,10 @@ is_preexisting_yq_local() {
   [[ -f "$INSTALL_INFO" ]] && grep -qx 'preexisting_yq_local=1' "$INSTALL_INFO"
 }
 
+is_installed_yq_local() {
+  [[ -f "$INSTALL_INFO" ]] && grep -qx 'installed_yq_local=1' "$INSTALL_INFO"
+}
+
 unregister_command() {
   if [[ ! -e "$EASY_DEPLOY_CMD" && ! -L "$EASY_DEPLOY_CMD" ]]; then
     echo "easy-deploy 命令未注册，跳过"
@@ -120,8 +124,12 @@ esac
 if [[ -f /usr/local/bin/yq ]]; then
   if is_preexisting_yq_local; then
     echo "跳过 /usr/local/bin/yq（install.info：安装前已存在）"
-  elif ask_yn "是否删除 /usr/local/bin/yq（由 install.sh 从 GitHub 安装的）?"; then
-    $SUDO rm -f /usr/local/bin/yq
+  elif is_installed_yq_local; then
+    if ask_yn "是否删除 /usr/local/bin/yq（install.sh 安装的 mikefarah/yq）?"; then
+      $SUDO rm -f /usr/local/bin/yq
+    fi
+  else
+    echo "跳过 /usr/local/bin/yq（非 install.sh 安装，请自行处理）"
   fi
 fi
 

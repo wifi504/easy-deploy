@@ -57,7 +57,11 @@ validate_gitea() {
 validate_dependencies() {
   require_command curl
   require_command jq
-  require_command yq
+  if ! resolve_yq_bin; then
+    validate_fail "缺少 mikefarah/yq（Go 版）。请运行 install.sh 安装，勿使用 apt 的 Python 版 yq"
+  elif command -v yq >/dev/null 2>&1 && [[ "$(command -v yq)" != "$YQ_BIN" ]] && ! is_mikefarah_yq "$(command -v yq)"; then
+    validate_fail "检测到 Python 版 yq（kislyuk），与 easy-deploy 不兼容。请使用 ${YQ_BIN}（mikefarah/yq）"
+  fi
   require_command docker
   require_command unzip
   require_command tar
@@ -159,7 +163,7 @@ validate_services() {
         compose_paths+=("$compose")
         if [[ -z "$svc" || "$svc" == "null" ]]; then
           validate_fail "service ${name}: deploy.service 缺失"
-        elif [[ "$(yq eval ".services | has(\"${svc}\")" "$compose")" != "true" ]]; then
+        elif [[ "$("$YQ_BIN" eval ".services | has(\"${svc}\")" "$compose")" != "true" ]]; then
           validate_fail "service ${name}: compose 中找不到 deploy.service '${svc}' (${compose})"
         fi
       fi
