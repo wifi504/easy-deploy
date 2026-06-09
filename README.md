@@ -57,7 +57,14 @@ cd easy-deploy
 easy-deploy
 ```
 
-就这一条，不要带参数。跑起来后会后台执行，日志在 `logs/deploy-YYYYMMDD-HHMMSS/` 下面。
+就这一条，不要带参数。跑起来后会**立刻回到命令行**（部署在后台执行），并打印本次日志目录；接着会提示类似：
+
+```text
+[2026-06-09 10:42:00] 已成功开始执行自动化部署，日志目录：/opt/easy-deploy/logs/deploy-20260609-104200
+[2026-06-09 10:42:00] 你可以使用 tail -f /opt/easy-deploy/logs/deploy-20260609-104200/easy-deploy-agent.sh.log 来实时查看部署 Agent 日志
+```
+
+复制第二行里的 `tail -f ...` 即可跟踪 Agent；各 service 的 worker / package / deploy 日志也在同一 `deploy-*` 目录下。
 
 想卸依赖用 `./uninstall.sh`，会先取消 `easy-deploy` 命令注册，再逐个包问你 y/n，避免误删别的脚本还在用的东西。
 

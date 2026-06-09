@@ -70,4 +70,6 @@ nohup bash "${DEPLOY_ROOT}/scripts/easy-deploy-agent.sh" "${DEPLOY_LOCK_FD}" \
 disown
 
 log_msg "已成功开始执行自动化部署，日志目录：${LOG_DIR}"
+agent_log="${LOG_DIR}/easy-deploy-agent.sh.log"
+log_msg "你可以使用 tail -f ${agent_log} 来实时查看部署 Agent 日志"
 exit 0
