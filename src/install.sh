@@ -96,9 +96,28 @@ mark_installed_yq_local() {
   fi
 }
 
+try_install_yq_from_dnf() {
+  local mgr="$1"
+  local candidate
+  # Fedora 等发行版的 yq 包是 mikefarah/yq；CentOS EPEL 多为 Python 版，装完会校验并放弃
+  if ! $SUDO "$mgr" install -y yq >/dev/null 2>&1; then
+    return 1
+  fi
+  candidate="$(command -v yq 2>/dev/null || true)"
+  [[ -n "$candidate" ]] && is_mikefarah_yq "$candidate"
+}
+
 ensure_mikefarah_yq() {
+  local existing=""
+
   if [[ -x "$YQ_TARGET" ]] && is_mikefarah_yq "$YQ_TARGET"; then
     log "mikefarah/yq 已就绪: ${YQ_TARGET}"
+    return 0
+  fi
+
+  existing="$(command -v yq 2>/dev/null || true)"
+  if [[ -n "$existing" ]] && is_mikefarah_yq "$existing"; then
+    log "mikefarah/yq 已就绪: ${existing}"
     return 0
   fi
 
@@ -106,7 +125,22 @@ ensure_mikefarah_yq() {
     log "检测到 Python 版 yq（kislyuk），easy-deploy 需要 mikefarah/yq"
   fi
 
-  log "从 GitHub 安装 mikefarah/yq 到 ${YQ_TARGET}..."
+  case "$pkg_mgr" in
+    dnf|yum)
+      if try_install_yq_from_dnf "$pkg_mgr"; then
+        log "已通过 ${pkg_mgr} 安装 mikefarah/yq: $(command -v yq)"
+        return 0
+      fi
+      ;;
+  esac
+
+  if [[ -n "${YQ_DOWNLOAD_URL:-}" ]]; then
+    log "从自定义地址安装 mikefarah/yq 到 ${YQ_TARGET}..."
+  elif [[ -n "${GITHUB_MIRROR:-}" ]]; then
+    log "通过镜像 ${GITHUB_MIRROR} 安装 mikefarah/yq 到 ${YQ_TARGET}..."
+  else
+    log "下载 mikefarah/yq 到 ${YQ_TARGET}（apt 源无此包，需拉取二进制；慢可设 GITHUB_MIRROR）..."
+  fi
   install_mikefarah_yq "$YQ_TARGET" "$SUDO"
   mark_installed_yq_local
   log "mikefarah/yq 安装完成"

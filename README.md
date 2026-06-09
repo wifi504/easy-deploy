@@ -46,6 +46,18 @@ bash install.sh
 
 `install.sh` 会安装依赖，并把 `easy-deploy` 注册到 `/usr/local/bin/`（以后任意目录可直接跑 `easy-deploy`）。同时会在同目录生成 `install.info`，记录安装前机器上已有的依赖；卸载时会自动跳过这些包。
 
+**yq 说明**：easy-deploy 需要 [mikefarah/yq](https://github.com/mikefarah/yq)（Go 版），不能用 apt 源里的 Python 版 `yq`。在 Debian/Ubuntu 上需下载二进制，若直连 GitHub 较慢，可指定镜像或内网地址：
+
+```bash
+# GitHub 加速镜像（任选其一，按你环境可用的为准）
+GITHUB_MIRROR=https://ghfast.top bash install.sh
+
+# 或指定完整下载 URL（适合内网静态文件服务）
+YQ_DOWNLOAD_URL=https://your-mirror.example.com/yq_linux_amd64 bash install.sh
+```
+
+Fedora 等部分发行版可通过 `dnf install yq` 直接装到 mikefarah/yq，`install.sh` 会优先尝试。
+
 ### 卸载
 
 非常绿色的运维脚本，想卸依赖用 `bash uninstall.sh`，会先取消 `easy-deploy` 命令注册，再逐个包问你删除吗 y/n，避免误删你在使用此运维脚本后，自己写了别的脚本，用到的一些相同依赖。

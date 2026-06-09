@@ -43,18 +43,55 @@ resolve_yq_bin() {
   return 1
 }
 
+# mikefarah/yq 发布包下载地址（apt 源里是 Python 版 kislyuk/yq，不能走包管理器）
+yq_release_asset_name() {
+  case "$(uname -m)" in
+    x86_64) echo yq_linux_amd64 ;;
+    aarch64|arm64) echo yq_linux_arm64 ;;
+    *) die "不支持自动安装 yq 的架构: $(uname -m)" ;;
+  esac
+}
+
+yq_default_download_url() {
+  local asset="${1:-$(yq_release_asset_name)}"
+  echo "https://github.com/mikefarah/yq/releases/latest/download/${asset}"
+}
+
+# 支持通过环境变量走镜像或内网源，避免直连 GitHub：
+#   YQ_DOWNLOAD_URL   — 完整 URL，优先级最高（适合内网静态文件服务）
+#   GITHUB_MIRROR     — 镜像前缀，拼在默认 URL 前，例如 https://ghfast.top
+yq_resolve_download_url() {
+  local asset="${1:-$(yq_release_asset_name)}"
+  local default_url
+  default_url="$(yq_default_download_url "$asset")"
+  if [[ -n "${YQ_DOWNLOAD_URL:-}" ]]; then
+    echo "$YQ_DOWNLOAD_URL"
+  elif [[ -n "${GITHUB_MIRROR:-}" ]]; then
+    echo "${GITHUB_MIRROR%/}/${default_url}"
+  else
+    echo "$default_url"
+  fi
+}
+
+download_yq_binary() {
+  local dest="$1"
+  local asset url
+  asset="$(yq_release_asset_name)"
+  url="$(yq_resolve_download_url "$asset")"
+  if ! curl -fsSL --connect-timeout 15 --max-time 300 "$url" -o "$dest"; then
+    if [[ -z "${GITHUB_MIRROR:-}" && -z "${YQ_DOWNLOAD_URL:-}" ]]; then
+      die "yq 下载失败（${url}）。可设置 GITHUB_MIRROR 或 YQ_DOWNLOAD_URL 使用镜像/内网源，例如: GITHUB_MIRROR=https://ghfast.top bash install.sh"
+    fi
+    die "yq 下载失败: ${url}"
+  fi
+}
+
 install_mikefarah_yq() {
   local target="${1:-/usr/local/bin/yq}"
   local sudo_cmd="${2:-}"
-  local arch yq_bin tmp
-  arch="$(uname -m)"
-  case "$arch" in
-    x86_64) yq_bin=yq_linux_amd64 ;;
-    aarch64|arm64) yq_bin=yq_linux_arm64 ;;
-    *) die "不支持自动安装 yq 的架构: ${arch}" ;;
-  esac
+  local tmp
   tmp="$(mktemp)"
-  curl -fsSL "https://github.com/mikefarah/yq/releases/latest/download/${yq_bin}" -o "$tmp"
+  download_yq_binary "$tmp"
   $sudo_cmd install -m 0755 "$tmp" "$target"
   rm -f "$tmp"
   YQ_BIN="$target"
