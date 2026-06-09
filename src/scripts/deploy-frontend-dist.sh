@@ -15,6 +15,7 @@ SERVICE_NAME="$1"
 temp_file="$2"
 version="$3"
 export hook_service_name="$SERVICE_NAME"
+export hook_package_version_tag="$version"
 
 # shellcheck source=lib/common.sh
 source "${DEPLOY_ROOT}/lib/common.sh"

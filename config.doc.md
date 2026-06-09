@@ -140,8 +140,28 @@ deploy:
 | `${hook_current_time}` | 全部；格式 `yyyyMMdd-HHmmss`（Asia/Shanghai） |
 | `${hook_service_name}` | service 级 hook（package / deploy） |
 | `${hook_fail_count}` | `on-agent-fail` |
-| `${hook_package_version_tag}` | `on-package-success`；generic 为 Gitea version，docker-container 为 `sha256:...` digest |
+| `${hook_package_version_tag}` | `on-package-success`、`on-deploy-start` 及 deploy 阶段 hook；generic 为 Gitea version，docker-container 为 `sha256:...` digest |
 | `${hook_package_errmsg}` | `on-package-fail` |
 | `${hook_deploy_errmsg}` | `on-deploy-fail` |
 
-用户命令中其他已 export 的环境变量（如 `${GITEA_TOKEN}`）同样可在 hook 命令中使用。
+用户命令中其他已 export 的环境变量（如 `${GITEA_TOKEN}`）需在 shell 双引号或未引号语境下才会被 `eval` 展开；`${hook_*}` 则在执行前由脚本直接替换，**单引号内也可使用**。
+
+### 多行命令（YAML `>-`）
+
+Hook 的值是普通 YAML 字符串，支持用 **`>-` 折叠块** 写多行命令：换行会被折叠成空格，末尾换行会被去掉，最终仍作为**一条 shell 命令**执行。适合较长的 `curl`、带多个参数的命令等，不必挤在一行引号里。
+
+```yaml
+hooks:
+  on-deploy-start: >-
+    curl --request POST
+    --url 'http://10.10.10.13:10066/api/message/send?botNames=mybot&receives=group'
+    --header 'Authorization: token ${BOT_TOKEN}'
+    --header 'Content-Type: application/json'
+    --data '{"message":"🚀 开始部署\n服务：${hook_service_name}\n时间：${hook_current_time}\n版本：${hook_package_version_tag}"}'
+```
+
+说明：
+
+- `>-` 折叠后等价于一行：`curl --request POST --url '...' --header '...' ...`
+- `${hook_*}` 在 JSON 单引号内也会正确替换；敏感 token 建议写成 `${BOT_TOKEN}`，运行前 `export BOT_TOKEN=...`
+- 单行写法 `"echo ..."` 与 `>-` 多行写法可混用，按可读性选择即可

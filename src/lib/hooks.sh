@@ -5,6 +5,20 @@ hook_log() {
   echo "[$(TZ=Asia/Shanghai date '+%Y-%m-%d %H:%M:%S')] [hook] $*" >&2
 }
 
+# 将命令字符串中的 ${hook_*} 替换为已 export 的实际值（单引号内也能生效）
+_expand_hook_vars() {
+  local cmd="$1"
+  local var_name value pattern
+
+  while [[ "$cmd" =~ \$\{(hook_[^}]+)\} ]]; do
+    var_name="${BASH_REMATCH[1]}"
+    value="${!var_name:-}"
+    pattern="\${${var_name}}"
+    cmd="${cmd//$pattern/$value}"
+  done
+  printf '%s' "$cmd"
+}
+
 run_hook() {
   local hook_name="$1"
   local cmd rc=0 output line
@@ -15,6 +29,7 @@ run_hook() {
   fi
 
   export hook_current_time="$(TZ=Asia/Shanghai date +%Y%m%d-%H%M%S)"
+  cmd="$(_expand_hook_vars "$cmd")"
 
   hook_log "开始执行 ${hook_name}"
 

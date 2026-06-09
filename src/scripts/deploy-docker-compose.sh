@@ -14,6 +14,7 @@ fi
 SERVICE_NAME="$1"
 image_digest="$2"
 export hook_service_name="$SERVICE_NAME"
+export hook_package_version_tag="$image_digest"
 
 # shellcheck source=lib/common.sh
 source "${DEPLOY_ROOT}/lib/common.sh"
