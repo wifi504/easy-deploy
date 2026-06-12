@@ -3,6 +3,8 @@
 
 # shellcheck source=lib/config.sh
 source "${DEPLOY_ROOT}/lib/config.sh"
+# shellcheck source=lib/deploy-docker.sh
+source "${DEPLOY_ROOT}/lib/deploy-docker.sh"
 
 VALIDATE_ERRORS=()
 
@@ -87,6 +89,7 @@ validate_services() {
   local -a names=()
   local -a frontend_targets=()
   local -a compose_paths=()
+  local -a docker_run_container_names=()
   local has_frontend=0
   local i name
 
@@ -115,15 +118,15 @@ validate_services() {
 
     if [[ -z "$strategy" || "$strategy" == "null" ]]; then
       validate_fail "service ${name}: deploy.strategy 缺失"
-    elif [[ "$strategy" != "frontend-dist" && "$strategy" != "docker-compose" ]]; then
+    elif [[ "$strategy" != "frontend-dist" && "$strategy" != "docker-compose" && "$strategy" != "docker-run" ]]; then
       validate_fail "service ${name}: 不支持的 deploy.strategy '${strategy}'"
     fi
 
     if [[ "$pkg_type" == "generic" && "$strategy" != "frontend-dist" ]]; then
       validate_fail "service ${name}: generic 必须与 frontend-dist 配对"
     fi
-    if [[ "$pkg_type" == "docker-container" && "$strategy" != "docker-compose" ]]; then
-      validate_fail "service ${name}: docker-container 必须与 docker-compose 配对"
+    if [[ "$pkg_type" == "docker-container" && "$strategy" != "docker-compose" && "$strategy" != "docker-run" ]]; then
+      validate_fail "service ${name}: docker-container 必须与 docker-compose 或 docker-run 配对"
     fi
 
     if [[ -z "$owner" || "$owner" == "null" ]]; then
@@ -167,8 +170,28 @@ validate_services() {
           validate_fail "service ${name}: compose 中找不到 deploy.service '${svc}' (${compose})"
         fi
       fi
-      if [[ -z "$started" || "$started" == "null" || ! "$started" =~ ^[1-9][0-9]*$ ]]; then
-        validate_fail "service ${name}: deploy.started-check-seconds 必须是正整数"
+      if [[ -z "$started" || "$started" == "null" ]] || ! is_valid_started_check_seconds "$started"; then
+        validate_fail "service ${name}: deploy.started-check-seconds 必须是正整数或 -1（禁用稳定性检查）"
+      fi
+    fi
+
+    if [[ "$strategy" == "docker-run" ]]; then
+      local -a run_opts=()
+      local container_name
+      read_deploy_argv_field "$name" options run_opts
+      if [[ ${#run_opts[@]} -eq 0 ]]; then
+        validate_fail "service ${name}: deploy.options 缺失"
+      else
+        container_name="$(parse_container_name_from_argv "${run_opts[@]}")"
+        if [[ -z "$container_name" ]]; then
+          validate_fail "service ${name}: deploy.options 必须包含 --name"
+        else
+          docker_run_container_names+=("$container_name")
+        fi
+      fi
+      started="$(service_deploy_field "$name" started-check-seconds)"
+      if [[ -z "$started" || "$started" == "null" ]] || ! is_valid_started_check_seconds "$started"; then
+        validate_fail "service ${name}: deploy.started-check-seconds 必须是正整数或 -1（禁用稳定性检查）"
       fi
     fi
   done
@@ -181,6 +204,9 @@ validate_services() {
   fi
   if [[ ${#compose_paths[@]} -gt 0 ]] && has_duplicate "${compose_paths[@]}"; then
     validate_fail "docker-compose 服务的 deploy.compose 存在重复"
+  fi
+  if [[ ${#docker_run_container_names[@]} -gt 0 ]] && has_duplicate "${docker_run_container_names[@]}"; then
+    validate_fail "docker-run 服务的容器名 (--name) 存在重复"
   fi
 
   if [[ "$has_frontend" -eq 1 ]]; then

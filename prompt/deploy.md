@@ -99,12 +99,12 @@ services:
       started-check-seconds: 3
 ```
 
-我们的部署脚本的第一版本，`services.package.type` 先只支持 `generic | docker-container` ，`services.deploy.strategy` 先只支持 `frontend-dist | docker-compose`
+`services.package.type` 支持 `generic | docker-container`，`services.deploy.strategy` 支持 `frontend-dist | docker-compose | docker-run`
 
-**type 与 strategy 强制配对**（预留以后扩展 docker-run 等策略，但不允许随意排列组合）：
+**type 与 strategy 强制配对**（不允许随意排列组合）：
 
 - `generic` 必须配 `frontend-dist`
-- `docker-container` 必须配 `docker-compose`
+- `docker-container` 必须配 `docker-compose` 或 `docker-run`
 
 配对不对的话，入口校验直接报错退出。
 

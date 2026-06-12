@@ -21,6 +21,143 @@ logs:
   # 日志保留级别：always: 每次保留 | deploy: 有deploy执行才保留（默认）| error: 有worker错误才保留
   level: deploy
 
+# 部署事件钩子（可选）
+hooks:
+  # 部署 Agent 启动时
+  on-agent-start: "echo agent-start：${hook_current_time}"
+  # ... 更多配置详见下文 hooks 小节
+
+# 脚本运行所需的一些配置
+scripts:
+  # Nginx Reload 命令（存在 frontend-dist 服务时必填）
+  reload-nginx-cmd: "docker exec nginx-container nginx -s reload"
+
+# CD 流程要处理的服务，是个数组，具体配置详见下文 services 小节
+services:
+
+  - name: service1
+    package: ...
+    deploy: ...
+
+  - name: service2
+    package: ...
+    deploy: ...
+
+  - name: service3
+    package: ...
+    deploy: ...
+```
+
+
+
+## 日志（logs）
+
+- `max-log-history`：在每次执行**开始**时，对 `logs/deploy-*` 目录做滚动清理（0 = 不保留历史；−1 = 无上限；N = 只保留最新 N 个目录）。
+- `level`：日志保留级别，默认 `deploy`。执行期间日志照常写入；仅在 agent **结束**时判断是否删除本次 `deploy-*` 目录。
+
+| level | 含义 |
+|-------|------|
+| `always` | 每次执行都保留日志目录 |
+| `deploy` | 至少有一个 service 实际进入 deploy 流程才保留；全部 skip 或仅 package 失败时删除 |
+| `error` | 至少有一个 worker 失败才保留；全部 worker 成功时删除 |
+
+`max-log-history` 与 `level` 配合使用：例如 `max-log-history: 10` 且 `level: deploy` 时，磁盘上最多保留最近 10 次**实际执行过 deploy** 的运行日志，适合定时任务频繁触发、多数运行无实际部署的场景。
+
+
+
+## 服务配置（services）
+
+- 每一个 service 就是部署脚本后台并行单独处理的一个任务
+
+- name：这个任务在配置文件里的唯一标识，不可重复，也是日志文件记录会引用的文件名，所以不可以有文件名不能用的符号
+- package：定义制品的获取流程
+- deploy：定义获取到的制品怎么部署
+- package 和 deploy 配置段有对应关系，区分方式就是 package 的 type 和 deploy 的 strategy，现版本支持的配置对应方式如下
+  - package.type=generic -> deploy.strategy=frontend-dist
+  - package.type=docker-container -> deploy.strategy=docker-compose
+  - package.type=docker-container -> deploy.strategy=docker-run
+
+**以下是配置段参考：**
+
+### 拉取《通用制品》 -> 部署《指定 Nginx 文件夹》
+
+`package.type=generic -> deploy.strategy=frontend-dist`
+
+```yaml
+package:
+  type: generic
+  owner: gitea-package所有者名字
+  name: gitea-package名字
+  file: 制品文件的名字
+deploy:
+  strategy: frontend-dist
+  target: 解压缩制品文件的目标目录
+```
+
+### 拉取《Docker 镜像》 -> 部署《Docker 编排》
+
+`package.type=docker-container -> deploy.strategy=docker-compose`
+
+```yaml
+package:
+  type: docker-container
+  owner: gitea-package所有者名字
+  name: gitea-package名字
+deploy:
+  strategy: docker-compose
+  compose: dockercompose文件的路径/docker-compose.yml
+  service: compose文件里面的service名字
+  started-check-seconds: 3
+```
+
+`started-check-seconds` 说明：部署后等待指定秒数，检查容器是否仍在运行且未发生重启；配置为 `-1` 时跳过该检查，启动成功即视为部署成功。`docker-compose` 与 `docker-run` 均适用。
+
+### 拉取《Docker 镜像》 -> 部署《Docker Run》
+
+`package.type=docker-container -> deploy.strategy=docker-run`
+
+脚本自动执行 `docker run -d <options> <镜像@digest> [<command>] [<args>]`。镜像地址由 Gitea 配置与 package digest 拼接，**不必在配置里写镜像**；`-d`（后台运行）由脚本默认添加，不必写在 `options` 里。
+
+`options`、`command`、`args` 对应 `docker run [OPTIONS] IMAGE [COMMAND] [ARG...]` 中 IMAGE 之前/之后的部分；`command` 与 `args` 可选，不配则使用镜像默认 ENTRYPOINT/CMD。三者均支持 YAML 字符串数组或 `>-` 折叠块。
+
+`options` 中必须包含 `--name`（或 `--name=xxx`），用于定位容器、部署前 `docker rm -f` 及跨服务唯一性校验。
+
+```yaml
+package:
+  type: docker-container
+  owner: gitea-package所有者名字
+  name: gitea-package名字
+deploy:
+  strategy: docker-run
+  options: >-
+    --name my-api
+    -p 8080:8080
+    -e SPRING_PROFILES_ACTIVE=prod
+  command: java
+  args: >-
+    -jar /app/app.jar
+  started-check-seconds: 5
+```
+
+数组写法等价：
+
+```yaml
+  options: ["--name", "my-api", "-p", "8080:8080"]
+  command: ["java"]
+  args: ["-jar", "/app/app.jar"]
+```
+
+
+
+## 部署事件钩子（hooks）
+
+**`hooks` 段及所有子项均为可选**；默认 [`easy-deploy-config.yaml`](./src/easy-deploy-config.yaml) 不含此段。
+
+在配置文件中放在 `logs` 与 `scripts` 之间。部署脚本在对应事件发生时**阻塞**执行配置的 shell 命令（`eval`），命令的全部输出写入对应阶段日志；hook 命令失败**不会**中断部署主流程。若需耗时或异步任务，请在 hook 命令内自行后台启动子 shell。
+
+完整的hooks配置如下
+
+```yaml
 # 部署事件钩子（可选，默认配置文件可不包含此段）
 # 在关键时间点阻塞执行配置的 shell 命令；hook 命令失败不会中断部署流程
 # 所有 ${hook_*} 格式的变量在 hook 执行时动态注入；耗时任务请用户自行后台化
@@ -45,93 +182,7 @@ hooks:
   on-deploy-success: "echo ${hook_service_name} 部署成功"
   # deploy 流程失败，${hook_deploy_errmsg} 为失败原因
   on-deploy-fail: "echo ${hook_service_name} 部署失败，原因是：${hook_deploy_errmsg}"
-
-# 脚本运行所需的一些配置
-scripts:
-  # Nginx Reload 命令（存在 frontend-dist 服务时必填）
-  reload-nginx-cmd: "docker exec nginx-container nginx -s reload"
-
-# CD 流程要处理的服务，是个数组
-services:
-
-  - name: service1
-    package: ...
-    deploy: ...
-
-  - name: service2
-    package: ...
-    deploy: ...
-
-  - name: service3
-    package: ...
-    deploy: ...
 ```
-
-## 日志（logs）
-
-- `max-log-history`：在每次执行**开始**时，对 `logs/deploy-*` 目录做滚动清理（0 = 不保留历史；−1 = 无上限；N = 只保留最新 N 个目录）。
-- `level`：日志保留级别，默认 `deploy`。执行期间日志照常写入；仅在 agent **结束**时判断是否删除本次 `deploy-*` 目录。
-
-| level | 含义 |
-|-------|------|
-| `always` | 每次执行都保留日志目录 |
-| `deploy` | 至少有一个 service 实际进入 deploy 流程才保留；全部 skip 或仅 package 失败时删除 |
-| `error` | 至少有一个 worker 失败才保留；全部 worker 成功时删除 |
-
-`max-log-history` 与 `level` 配合使用：例如 `max-log-history: 10` 且 `level: deploy` 时，磁盘上最多保留最近 10 次**实际执行过 deploy** 的运行日志，适合定时任务频繁触发、多数运行无实际部署的场景。
-
-## 服务配置
-
-- 每一个 service 就是部署脚本后台并行单独处理的一个任务
-
-- name：这个任务在配置文件里的唯一标识，不可重复，也是日志文件记录会引用的文件名，所以不可以有文件名不能用的符号
-- package：定义制品的获取流程
-- deploy：定义获取到的制品怎么部署
-- package 和 deploy 配置段有对应关系，区分方式就是 package 的 type 和 deploy 的 strategy，现版本支持的配置对应方式如下
-  - package.type=generic -> deploy.strategy=frontend-dist
-  - package.type=docker-container -> deploy.strategy=docker-compose
-  - package.type=docker-container -> deploy.strategy=docker-run （敬请期待...）
-
-**以下是配置段参考：**
-
-### 拉取《通用制品》 -> 部署《指定 Nginx 文件夹》
-
-`package.type=generic -> deploy.strategy=frontend-dist`
-
-```yaml
-package:
-  type: generic
-  owner: gitea-package所有者名字
-  name: gitea-package名字
-  file: 制品文件的名字
-deploy:
-  strategy: frontend-dist
-  target: 解压缩制品文件的目标目录
-```
-
-
-
-### 拉取《Docker 镜像》 -> 部署《Docker 编排》
-
-`package.type=docker-container -> deploy.strategy=docker-compose`
-
-```yaml
-package:
-  type: docker-container
-  owner: gitea-package所有者名字
-  name: gitea-package名字
-deploy:
-  strategy: docker-compose
-  compose: dockercompose文件的路径/docker-compose.yml
-  service: compose文件里面的service名字
-  started-check-seconds: 容器启动后，等待多少秒，看下这个容器有没有停止或者重启过
-```
-
-## 部署事件钩子（hooks，可选）
-
-`hooks` 段及所有子项均为可选；默认 [`easy-deploy-config.yaml`](./src/easy-deploy-config.yaml) 不含此段。
-
-在配置文件中放在 `logs` 与 `scripts` 之间。部署脚本在对应事件发生时**阻塞**执行配置的 shell 命令（`eval`），命令的全部输出写入对应阶段日志；hook 命令失败**不会**中断部署主流程。若需耗时或异步任务，请在 hook 命令内自行后台启动子 shell。
 
 ### Hook 名称
 

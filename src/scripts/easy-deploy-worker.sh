@@ -81,8 +81,16 @@ case "$pkg_type" in
     ;;
   docker-container)
     image_digest="$last_line"
-    deploy_script="${DEPLOY_ROOT}/scripts/deploy-docker-compose.sh"
-    deploy_log="${LOG_DIR}/deploy-docker-compose.sh.${SERVICE_NAME}.log"
+    case "$strategy" in
+      docker-compose)
+        deploy_script="${DEPLOY_ROOT}/scripts/deploy-docker-compose.sh"
+        ;;
+      docker-run)
+        deploy_script="${DEPLOY_ROOT}/scripts/deploy-docker-run.sh"
+        ;;
+      *) die "service ${SERVICE_NAME}: 未知的 deploy.strategy: ${strategy}" ;;
+    esac
+    deploy_log="${LOG_DIR}/$(basename "$deploy_script").${SERVICE_NAME}.log"
     touch "${LOG_DIR}/.deploy-executed"
     export EASY_DEPLOY_PAYLOAD_MODE=1
     if ! bash "$deploy_script" "$SERVICE_NAME" "$image_digest" 2>>"$deploy_log"; then

@@ -34,3 +34,17 @@ services:
       compose: /data/docker/compose/my-backend-1/docker-compose.yml
       service: backend
       started-check-seconds: 3
+
+  - name: docker-run-backend
+    package:
+      type: docker-container
+      owner: OwnerName
+      name: PackageName
+    deploy:
+      strategy: docker-run
+      options: >-
+        --name my-api
+        -p 8080:8080
+        --restart unless-stopped
+        --network my-host
+      started-check-seconds: 5

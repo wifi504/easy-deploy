@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Docker Compose：改 image、重启、健康检查、失败回滚
+# Docker Run：停止旧容器、启动新镜像、健康检查、失败回滚
 
 set -euo pipefail
 
@@ -7,7 +7,7 @@ DEPLOY_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 export DEPLOY_ROOT
 
 if [[ $# -ne 2 ]]; then
-  echo "用法: deploy-docker-compose.sh <serviceName> <imageDigest>" >&2
+  echo "用法: deploy-docker-run.sh <serviceName> <imageDigest>" >&2
   exit 1
 fi
 
@@ -34,29 +34,40 @@ log_deploy() {
 owner="$(service_package_field "$SERVICE_NAME" owner)"
 pkg_name="$(service_package_field "$SERVICE_NAME" name)"
 host="$(gitea_host)"
-compose_file="$(service_deploy_field "$SERVICE_NAME" compose)"
-compose_service="$(service_deploy_field "$SERVICE_NAME" service)"
 check_seconds="$(service_deploy_field "$SERVICE_NAME" started-check-seconds)"
 image_ref="${host}/${owner}/${pkg_name}@${image_digest}"
 
 old_version="$(versions_get "$SERVICE_NAME")"
-backup_file="${compose_file}.easy-deploy.bak"
 
-cp "$compose_file" "$backup_file"
+declare -a deploy_opts=() deploy_cmd=() deploy_args=()
+read_deploy_argv_field "$SERVICE_NAME" options deploy_opts
+read_deploy_argv_field "$SERVICE_NAME" command deploy_cmd
+read_deploy_argv_field "$SERVICE_NAME" args deploy_args
+dedupe_d_flag deploy_opts
 
-restore_compose() {
-  cp "$backup_file" "$compose_file"
-}
+container_name="$(parse_container_name_from_argv "${deploy_opts[@]}")"
 
-compose_down_up() {
-  docker compose -f "$compose_file" down
-  docker compose -f "$compose_file" up -d
+docker_run_with_digest() {
+  local digest="$1"
+  local ref="${host}/${owner}/${pkg_name}@${digest}"
+  local -a cmd=(docker run -d)
+  cmd+=("${deploy_opts[@]}")
+  cmd+=("$ref")
+  [[ ${#deploy_cmd[@]} -gt 0 ]] && cmd+=("${deploy_cmd[@]}")
+  [[ ${#deploy_args[@]} -gt 0 ]] && cmd+=("${deploy_args[@]}")
+  log_deploy "执行: docker run -d ... ${ref}"
+  "${cmd[@]}"
 }
 
 rollback() {
-  log_deploy "回滚 compose 文件并重新启动"
-  restore_compose
-  compose_down_up
+  log_deploy "回滚容器 ${container_name}"
+  docker rm -f "$container_name" >/dev/null 2>&1 || true
+  if [[ -n "$old_version" ]]; then
+    log_deploy "用旧 digest 重新启动: ${old_version}"
+    if ! docker_run_with_digest "$old_version"; then
+      log_deploy "警告: 回滚启动旧版本失败"
+    fi
+  fi
   remove_image_by_digest "$host" "$owner" "$pkg_name" "$image_digest"
 }
 
@@ -65,23 +76,21 @@ _fail_deploy() {
   run_hook on-deploy-fail
   log_deploy "$1"
   rollback
-  rm -f "$backup_file"
   exit 1
 }
 
 run_hook on-deploy-start
 
-log_deploy "更新 compose 服务 ${compose_service} 的 image 为 ${image_ref}"
-"$YQ_BIN" eval -i ".services[\"${compose_service}\"].image = \"${image_ref}\"" "$compose_file"
+log_deploy "停止并删除旧容器: ${container_name}"
+docker rm -f "$container_name" >/dev/null 2>&1 || true
 
-log_deploy "重启 compose: ${compose_file}"
-if ! compose_down_up; then
-  _fail_deploy "docker compose down/up 失败"
+log_deploy "启动新镜像: ${image_ref}"
+if ! docker_run_with_digest "$image_digest"; then
+  _fail_deploy "docker run 失败"
 fi
 
-container_id="$(docker compose -f "$compose_file" ps -q "$compose_service")"
-if [[ -z "$container_id" ]]; then
-  _fail_deploy "找不到 service ${compose_service} 对应的容器"
+if ! container_id="$(docker inspect --format='{{.Id}}' "$container_name" 2>/dev/null)"; then
+  _fail_deploy "找不到容器 ${container_name}"
 fi
 
 if [[ "$check_seconds" == "-1" ]]; then
@@ -96,7 +105,6 @@ fi
 
 versions_set "$SERVICE_NAME" "$image_digest"
 remove_image_by_digest "$host" "$owner" "$pkg_name" "$old_version"
-rm -f "$backup_file"
 
 run_hook on-deploy-success
-log_deploy "service ${SERVICE_NAME} docker compose 部署完成"
+log_deploy "service ${SERVICE_NAME} docker run 部署完成"
