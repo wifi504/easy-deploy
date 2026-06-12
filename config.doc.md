@@ -31,6 +31,10 @@ hooks:
 scripts:
   # Nginx Reload 命令（存在 frontend-dist 服务时必填）
   reload-nginx-cmd: "docker exec nginx-container nginx -s reload"
+  # compose worker package 超时 / daemon 屏障等待上限（秒，默认 60）
+  package-timeout-seconds: 60
+  # compose deploy 客户端入队到收到响应的超时（秒，默认 120）
+  deploy-timeout-seconds: 120
 
 # CD 流程要处理的服务，是个数组，具体配置详见下文 services 小节
 services:
@@ -110,7 +114,11 @@ deploy:
   started-check-seconds: 3
 ```
 
-`started-check-seconds` 说明：部署后等待指定秒数，检查容器是否仍在运行且未发生重启；配置为 `-1` 时跳过该检查，启动成功即视为部署成功。`docker-compose` 与 `docker-run` 均适用。
+`started-check-seconds` 说明：部署后等待指定秒数，检查容器是否仍在运行且未发生重启；配置为 `-1` 时跳过该检查，启动成功即视为部署成功。`docker-compose` 与 `docker-run` 均适用。多个 compose service 共享同一 yml 时，daemon 会对 batch 内各 service 的 `started-check-seconds` 做**升序阶梯**检查（例如 3 与 5 分别在第 3、5 秒检查对应 service）；`-1` 不参与等待。
+
+多个 easy-deploy service 可指向**同一** `deploy.compose` 文件，但 **`deploy.compose` + `deploy.service` 组合全局唯一**（同一 compose 文件内不同 service 名须分别配置）。
+
+`docker-compose` 策略下，worker 的 deploy 步骤为薄客户端（入队 + 阻塞等待）；同 compose 文件的多个 digest service 由 **Compose Deploy Daemon** 批处理：一次 patch image、`docker compose up -d --no-deps --force-recreate`，失败时原子回滚整批。
 
 ### 拉取《Docker 镜像》 -> 部署《Docker Run》
 

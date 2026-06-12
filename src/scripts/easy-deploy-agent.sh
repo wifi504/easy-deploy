@@ -29,6 +29,8 @@ source "${DEPLOY_ROOT}/lib/lock.sh"
 source "${DEPLOY_ROOT}/lib/versions.sh"
 # shellcheck source=lib/hooks.sh
 source "${DEPLOY_ROOT}/lib/hooks.sh"
+# shellcheck source=lib/compose-deploy-ipc.sh
+source "${DEPLOY_ROOT}/lib/compose-deploy-ipc.sh"
 
 cleanup_agent() {
   release_deploy_lock
@@ -48,6 +50,14 @@ log_msg "easy-deploy-agent 已启动"
 run_hook on-agent-start
 
 versions_ensure
+compose_ipc_init
+
+COMPOSE_DAEMON_PID=""
+if compose_config_has_services; then
+  bash "${DEPLOY_ROOT}/scripts/compose-deploy-daemon.sh" &
+  COMPOSE_DAEMON_PID=$!
+  log_msg "compose-deploy-daemon 已后台启动 (pid ${COMPOSE_DAEMON_PID})"
+fi
 
 declare -a worker_pids=()
 declare -a worker_names=()
@@ -71,6 +81,13 @@ for i in "${!worker_pids[@]}"; do
     log_msg "service ${name} 的 worker 已完成"
   fi
 done
+
+if [[ -n "$COMPOSE_DAEMON_PID" ]]; then
+  touch "$COMPOSE_DAEMON_SHUTDOWN_FILE"
+  log_msg "已通知 compose-deploy-daemon 退出，等待 pid ${COMPOSE_DAEMON_PID}"
+  wait "$COMPOSE_DAEMON_PID" || true
+  log_msg "compose-deploy-daemon 已结束"
+fi
 
 if [[ -d "$TEMP_DIR" ]]; then
   rm -rf "${TEMP_DIR:?}/"*

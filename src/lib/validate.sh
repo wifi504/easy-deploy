@@ -88,7 +88,7 @@ validate_services() {
 
   local -a names=()
   local -a frontend_targets=()
-  local -a compose_paths=()
+  local -a compose_service_keys=()
   local -a docker_run_container_names=()
   declare -A package_key_first_service=()
   local has_frontend=0
@@ -180,11 +180,12 @@ validate_services() {
       elif [[ ! -f "$compose" ]]; then
         validate_fail "service ${name}: compose 文件不存在: ${compose}"
       else
-        compose_paths+=("$compose")
         if [[ -z "$svc" || "$svc" == "null" ]]; then
           validate_fail "service ${name}: deploy.service 缺失"
         elif [[ "$("$YQ_BIN" eval ".services | has(\"${svc}\")" "$compose")" != "true" ]]; then
           validate_fail "service ${name}: compose 中找不到 deploy.service '${svc}' (${compose})"
+        else
+          compose_service_keys+=("${compose}#${svc}")
         fi
       fi
       if [[ -z "$started" || "$started" == "null" ]] || ! is_valid_started_check_seconds "$started"; then
@@ -232,8 +233,8 @@ validate_services() {
   if [[ ${#frontend_targets[@]} -gt 0 ]] && has_duplicate "${frontend_targets[@]}"; then
     validate_fail "frontend-dist 服务的 deploy.target 存在重复"
   fi
-  if [[ ${#compose_paths[@]} -gt 0 ]] && has_duplicate "${compose_paths[@]}"; then
-    validate_fail "docker-compose 服务的 deploy.compose 存在重复"
+  if [[ ${#compose_service_keys[@]} -gt 0 ]] && has_duplicate "${compose_service_keys[@]}"; then
+    validate_fail "docker-compose 服务的 compose+service 组合存在重复"
   fi
   if [[ ${#docker_run_container_names[@]} -gt 0 ]] && has_duplicate "${docker_run_container_names[@]}"; then
     validate_fail "docker-run 服务的容器名 (--name) 存在重复"
@@ -259,6 +260,18 @@ validate_logs() {
   esac
 }
 
+validate_scripts_timeouts() {
+  local pkg_timeout deploy_timeout
+  pkg_timeout="$(cfg_raw '.scripts."package-timeout-seconds"')"
+  deploy_timeout="$(cfg_raw '.scripts."deploy-timeout-seconds"')"
+  if [[ -n "$pkg_timeout" && "$pkg_timeout" != "null" ]] && [[ ! "$pkg_timeout" =~ ^[1-9][0-9]*$ ]]; then
+    validate_fail "scripts.package-timeout-seconds 必须是正整数"
+  fi
+  if [[ -n "$deploy_timeout" && "$deploy_timeout" != "null" ]] && [[ ! "$deploy_timeout" =~ ^[1-9][0-9]*$ ]]; then
+    validate_fail "scripts.deploy-timeout-seconds 必须是正整数"
+  fi
+}
+
 run_validate() {
   VALIDATE_ERRORS=()
   if [[ ! -f "$CONFIG_FILE" ]]; then
@@ -267,6 +280,7 @@ run_validate() {
   fi
   validate_directories
   validate_logs
+  validate_scripts_timeouts
   validate_dependencies
   validate_gitea
   validate_services

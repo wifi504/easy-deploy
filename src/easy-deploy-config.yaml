@@ -11,6 +11,8 @@ hooks:
 
 scripts:
   reload-nginx-cmd: "nginx -s reload"
+  package-timeout-seconds: 60
+  deploy-timeout-seconds: 120
 
 services:
 
@@ -34,6 +36,18 @@ services:
       compose: /data/docker/compose/my-backend-1/docker-compose.yml
       service: backend
       started-check-seconds: 3
+
+  # 可与上一 service 共享同一 compose 文件，但 compose+service 组合须全局唯一
+  - name: docker-compose-backend-2
+    package:
+      type: docker-container
+      owner: OwnerName
+      name: AnotherPackageName
+    deploy:
+      strategy: docker-compose
+      compose: /data/docker/compose/my-backend-1/docker-compose.yml
+      service: backend-2
+      started-check-seconds: 5
 
   - name: docker-run-backend
     package:

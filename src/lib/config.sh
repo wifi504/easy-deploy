@@ -84,6 +84,27 @@ reload_nginx_cmd() {
   cfg_raw '.scripts."reload-nginx-cmd"'
 }
 
+_positive_int_or_default() {
+  local raw="$1" default="$2"
+  if [[ -z "$raw" || "$raw" == "null" ]]; then
+    printf '%s' "$default"
+    return 0
+  fi
+  if [[ "$raw" =~ ^[1-9][0-9]*$ ]]; then
+    printf '%s' "$raw"
+    return 0
+  fi
+  printf '%s' "$default"
+}
+
+package_timeout_seconds() {
+  _positive_int_or_default "$(cfg_raw '.scripts."package-timeout-seconds"')" "60"
+}
+
+deploy_timeout_seconds() {
+  _positive_int_or_default "$(cfg_raw '.scripts."deploy-timeout-seconds"')" "120"
+}
+
 max_log_history() {
   cfg_raw '.logs."max-log-history"'
 }

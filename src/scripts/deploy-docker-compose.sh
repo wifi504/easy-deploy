@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Docker Compose：改 image、重启、健康检查、失败回滚
+# Docker Compose 薄客户端：入队 job 并阻塞等待 daemon 结果
 
 set -euo pipefail
 
@@ -20,83 +20,34 @@ export hook_package_version_tag="$image_digest"
 source "${DEPLOY_ROOT}/lib/common.sh"
 # shellcheck source=lib/config.sh
 source "${DEPLOY_ROOT}/lib/config.sh"
-# shellcheck source=lib/versions.sh
-source "${DEPLOY_ROOT}/lib/versions.sh"
 # shellcheck source=lib/hooks.sh
 source "${DEPLOY_ROOT}/lib/hooks.sh"
-# shellcheck source=lib/deploy-docker.sh
-source "${DEPLOY_ROOT}/lib/deploy-docker.sh"
+# shellcheck source=lib/compose-deploy-ipc.sh
+source "${DEPLOY_ROOT}/lib/compose-deploy-ipc.sh"
 
 log_deploy() {
   echo "[$(TZ=Asia/Shanghai date '+%Y-%m-%d %H:%M:%S')] $*" >&2
 }
 
-owner="$(service_package_field "$SERVICE_NAME" owner)"
-pkg_name="$(service_package_field "$SERVICE_NAME" name)"
-host="$(gitea_host)"
 compose_file="$(service_deploy_field "$SERVICE_NAME" compose)"
 compose_service="$(service_deploy_field "$SERVICE_NAME" service)"
 check_seconds="$(service_deploy_field "$SERVICE_NAME" started-check-seconds)"
-image_ref="${host}/${owner}/${pkg_name}@${image_digest}"
-
-old_version="$(versions_get "$SERVICE_NAME")"
-backup_file="${compose_file}.easy-deploy.bak"
-
-cp "$compose_file" "$backup_file"
-
-restore_compose() {
-  cp "$backup_file" "$compose_file"
-}
-
-compose_down_up() {
-  docker compose -f "$compose_file" down
-  docker compose -f "$compose_file" up -d
-}
-
-rollback() {
-  log_deploy "回滚 compose 文件并重新启动"
-  restore_compose
-  compose_down_up
-  remove_image_by_digest "$host" "$owner" "$pkg_name" "$image_digest"
-}
-
-_fail_deploy() {
-  export hook_deploy_errmsg="$1"
-  run_hook on-deploy-fail
-  log_deploy "$1"
-  rollback
-  rm -f "$backup_file"
-  exit 1
-}
 
 run_hook on-deploy-start
 
-log_deploy "更新 compose 服务 ${compose_service} 的 image 为 ${image_ref}"
-"$YQ_BIN" eval -i ".services[\"${compose_service}\"].image = \"${image_ref}\"" "$compose_file"
+job_id="$(compose_job_submit "$SERVICE_NAME" "$compose_file" "$compose_service" "$image_digest" "$check_seconds")"
+log_deploy "已入队 compose deploy job ${job_id} (${SERVICE_NAME})"
 
-log_deploy "重启 compose: ${compose_file}"
-if ! compose_down_up; then
-  _fail_deploy "docker compose down/up 失败"
-fi
-
-container_id="$(docker compose -f "$compose_file" ps -q "$compose_service")"
-if [[ -z "$container_id" ]]; then
-  _fail_deploy "找不到 service ${compose_service} 对应的容器"
-fi
-
-if [[ "$check_seconds" == "-1" ]]; then
-  log_deploy "已跳过稳定性检查 (started-check-seconds=-1)"
-else
-  log_deploy "等待 ${check_seconds} 秒进行稳定性检查"
-  stability_err=""
-  if ! stability_err="$(container_stability_check "$container_id" "$check_seconds")"; then
-    _fail_deploy "$stability_err"
+wait_err=""
+if ! wait_err="$(compose_job_wait "$job_id" "$(deploy_timeout_seconds)")"; then
+  if [[ ! -f "${COMPOSE_RESPONSES_DIR}/${job_id}" ]]; then
+    export hook_deploy_errmsg="$wait_err"
+    run_hook on-deploy-fail
   fi
+  log_deploy "$wait_err"
+  exit 1
 fi
 
-versions_set "$SERVICE_NAME" "$image_digest"
-remove_image_by_digest "$host" "$owner" "$pkg_name" "$old_version"
-rm -f "$backup_file"
-
-run_hook on-deploy-success
-log_deploy "service ${SERVICE_NAME} docker compose 部署完成"
+touch "${LOG_DIR}/.deploy-executed"
+log_deploy "service ${SERVICE_NAME} compose deploy 客户端完成"
+exit 0

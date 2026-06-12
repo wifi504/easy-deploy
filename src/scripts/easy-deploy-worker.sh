@@ -20,6 +20,8 @@ source "${DEPLOY_ROOT}/lib/common.sh"
 source "${DEPLOY_ROOT}/lib/logging.sh"
 # shellcheck source=lib/config.sh
 source "${DEPLOY_ROOT}/lib/config.sh"
+# shellcheck source=lib/compose-deploy-ipc.sh
+source "${DEPLOY_ROOT}/lib/compose-deploy-ipc.sh"
 
 log_msg "worker 已启动，service: ${SERVICE_NAME}"
 
@@ -42,22 +44,48 @@ esac
 
 mkdir -p "$(dirname "$pkg_log")"
 
-export EASY_DEPLOY_PAYLOAD_MODE=1
-if ! pkg_output="$(bash "$package_script" "$SERVICE_NAME" 2>>"$pkg_log")"; then
+pkg_output=""
+pkg_rc=0
+if [[ "$strategy" == "docker-compose" ]]; then
+  pkg_timeout="$(package_timeout_seconds)"
+  export EASY_DEPLOY_PAYLOAD_MODE=1
+  set +e
+  pkg_output="$(timeout "${pkg_timeout}" bash "$package_script" "$SERVICE_NAME" 2>>"$pkg_log")"
+  pkg_rc=$?
+  set -e
   unset EASY_DEPLOY_PAYLOAD_MODE
-  die "service ${SERVICE_NAME} 的 package 步骤失败"
+  if [[ "$pkg_rc" -eq 124 ]]; then
+    compose_status_write "$SERVICE_NAME" "fail"
+    die "service ${SERVICE_NAME} 的 package 步骤超时 (${pkg_timeout}s)"
+  fi
+  if [[ "$pkg_rc" -ne 0 ]]; then
+    compose_status_write "$SERVICE_NAME" "fail"
+    die "service ${SERVICE_NAME} 的 package 步骤失败"
+  fi
+else
+  export EASY_DEPLOY_PAYLOAD_MODE=1
+  if ! pkg_output="$(bash "$package_script" "$SERVICE_NAME" 2>>"$pkg_log")"; then
+    unset EASY_DEPLOY_PAYLOAD_MODE
+    die "service ${SERVICE_NAME} 的 package 步骤失败"
+  fi
+  unset EASY_DEPLOY_PAYLOAD_MODE
 fi
-unset EASY_DEPLOY_PAYLOAD_MODE
 
 mapfile -t pkg_lines <<< "$pkg_output"
 
 if [[ ${#pkg_lines[@]} -eq 0 ]]; then
+  if [[ "$strategy" == "docker-compose" ]]; then
+    compose_status_write "$SERVICE_NAME" "fail"
+  fi
   die "package 脚本未返回任何输出"
 fi
 
 last_line="${pkg_lines[-1]}"
 
 if [[ "$last_line" == "skip_deploy" ]]; then
+  if [[ "$strategy" == "docker-compose" ]]; then
+    compose_status_write "$SERVICE_NAME" "skip"
+  fi
   log_msg "service ${SERVICE_NAME} 版本未变，跳过部署"
   exit 0
 fi
@@ -83,6 +111,7 @@ case "$pkg_type" in
     image_digest="$last_line"
     case "$strategy" in
       docker-compose)
+        compose_status_write "$SERVICE_NAME" "digest"
         deploy_script="${DEPLOY_ROOT}/scripts/deploy-docker-compose.sh"
         ;;
       docker-run)
@@ -91,7 +120,9 @@ case "$pkg_type" in
       *) die "service ${SERVICE_NAME}: 未知的 deploy.strategy: ${strategy}" ;;
     esac
     deploy_log="${LOG_DIR}/$(basename "$deploy_script").${SERVICE_NAME}.log"
-    touch "${LOG_DIR}/.deploy-executed"
+    if [[ "$strategy" != "docker-compose" ]]; then
+      touch "${LOG_DIR}/.deploy-executed"
+    fi
     export EASY_DEPLOY_PAYLOAD_MODE=1
     if ! bash "$deploy_script" "$SERVICE_NAME" "$image_digest" 2>>"$deploy_log"; then
       unset EASY_DEPLOY_PAYLOAD_MODE
