@@ -39,12 +39,13 @@ services:
     package:
       type: docker-container
       owner: OwnerName
-      name: PackageName
+      name: DockerRunPackageName
     deploy:
       strategy: docker-run
-      options: >-
-        --name my-api
-        -p 8080:8080
-        --restart unless-stopped
-        --network my-host
       started-check-seconds: 5
+      containers:
+        - options: >-
+            --name my-api
+            -p 8080:8080
+            --restart unless-stopped
+            --network my-host

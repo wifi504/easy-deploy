@@ -8,12 +8,11 @@ is_valid_started_check_seconds() {
   [[ "$1" =~ ^-1$ || "$1" =~ ^[1-9][0-9]*$ ]]
 }
 
-read_deploy_argv_field() {
-  local service="$1" field="$2"
-  local -n _out="$3"
+_read_yq_argv_field() {
+  local yq_path="$1"
+  local -n _out="$2"
   _out=()
 
-  local yq_path=".services[] | select(.name == \"${service}\") | .deploy.${field}"
   local tag
   tag="$("$YQ_BIN" eval "${yq_path} | tag" "$CONFIG_FILE")"
 
@@ -34,6 +33,30 @@ read_deploy_argv_field() {
       _out=("${_tmp[@]}")
     fi
   fi
+}
+
+read_deploy_argv_field() {
+  local service="$1" field="$2"
+  local -n _out="$3"
+  _read_yq_argv_field ".services[] | select(.name == \"${service}\") | .deploy.${field}" _out
+}
+
+docker_run_container_count() {
+  local service="$1"
+  local count tag
+  tag="$("$YQ_BIN" eval ".services[] | select(.name == \"${service}\") | .deploy.containers | tag" "$CONFIG_FILE")"
+  if [[ "$tag" != "!!seq" ]]; then
+    printf '0'
+    return 0
+  fi
+  count="$("$YQ_BIN" eval ".services[] | select(.name == \"${service}\") | .deploy.containers | length" "$CONFIG_FILE")"
+  printf '%s' "$count"
+}
+
+read_container_argv_field() {
+  local service="$1" index="$2" field="$3"
+  local -n _out="$4"
+  _read_yq_argv_field ".services[] | select(.name == \"${service}\") | .deploy.containers[${index}].${field}" _out
 }
 
 parse_container_name_from_argv() {

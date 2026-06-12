@@ -90,6 +90,7 @@ validate_services() {
   local -a frontend_targets=()
   local -a compose_paths=()
   local -a docker_run_container_names=()
+  declare -A package_key_first_service=()
   local has_frontend=0
   local i name
 
@@ -136,10 +137,26 @@ validate_services() {
       validate_fail "service ${name}: package.name 缺失"
     fi
 
+    if [[ "$pkg_type" == "docker-container" ]]; then
+      local pkg_key="${owner}/${pkg_name}"
+      if [[ -n "${package_key_first_service[$pkg_key]:-}" ]]; then
+        validate_fail "package owner/name 重复: ${pkg_key} (service: ${package_key_first_service[$pkg_key]}, ${name})"
+      else
+        package_key_first_service[$pkg_key]="$name"
+      fi
+    fi
+
     if [[ "$pkg_type" == "generic" ]]; then
       pkg_file="$(service_package_field "$name" file)"
       if [[ -z "$pkg_file" || "$pkg_file" == "null" ]]; then
         validate_fail "service ${name}: generic 类型必须配置 package.file"
+      else
+        local pkg_key="${owner}/${pkg_name}/${pkg_file}"
+        if [[ -n "${package_key_first_service[$pkg_key]:-}" ]]; then
+          validate_fail "package owner/name/file 重复: ${pkg_key} (service: ${package_key_first_service[$pkg_key]}, ${name})"
+        else
+          package_key_first_service[$pkg_key]="$name"
+        fi
       fi
       target="$(service_deploy_field "$name" target)"
       if [[ -z "$target" || "$target" == "null" ]]; then
@@ -176,18 +193,31 @@ validate_services() {
     fi
 
     if [[ "$strategy" == "docker-run" ]]; then
+      local container_tag container_count c
       local -a run_opts=()
       local container_name
-      read_deploy_argv_field "$name" options run_opts
-      if [[ ${#run_opts[@]} -eq 0 ]]; then
-        validate_fail "service ${name}: deploy.options 缺失"
+      container_tag="$("$YQ_BIN" eval ".services[] | select(.name == \"${name}\") | .deploy.containers | tag" "$CONFIG_FILE")"
+      if [[ "$container_tag" != "!!seq" ]]; then
+        validate_fail "service ${name}: deploy.containers 必须是至少包含 1 项的数组"
       else
-        container_name="$(parse_container_name_from_argv "${run_opts[@]}")"
-        if [[ -z "$container_name" ]]; then
-          validate_fail "service ${name}: deploy.options 必须包含 --name"
-        else
-          docker_run_container_names+=("$container_name")
+        container_count="$(docker_run_container_count "$name")"
+        if [[ "$container_count" -lt 1 ]]; then
+          validate_fail "service ${name}: deploy.containers 不能为空"
         fi
+        for ((c = 0; c < container_count; c++)); do
+          run_opts=()
+          read_container_argv_field "$name" "$c" options run_opts
+          if [[ ${#run_opts[@]} -eq 0 ]]; then
+            validate_fail "service ${name}: deploy.containers[${c}].options 缺失"
+          else
+            container_name="$(parse_container_name_from_argv "${run_opts[@]}")"
+            if [[ -z "$container_name" ]]; then
+              validate_fail "service ${name}: deploy.containers[${c}].options 必须包含 --name"
+            else
+              docker_run_container_names+=("$container_name")
+            fi
+          fi
+        done
       fi
       started="$(service_deploy_field "$name" started-check-seconds)"
       if [[ -z "$started" || "$started" == "null" ]] || ! is_valid_started_check_seconds "$started"; then

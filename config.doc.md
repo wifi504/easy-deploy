@@ -70,7 +70,7 @@ services:
 - 每一个 service 就是部署脚本后台并行单独处理的一个任务
 
 - name：这个任务在配置文件里的唯一标识，不可重复，也是日志文件记录会引用的文件名，所以不可以有文件名不能用的符号
-- package：定义制品的获取流程
+- package：定义制品的获取流程；**一个制品只能对应一个 service 配置段**——`docker-container` 按 `owner`+`name` 全局唯一，`generic` 按 `owner`+`name`+`file` 全局唯一
 - deploy：定义获取到的制品怎么部署
 - package 和 deploy 配置段有对应关系，区分方式就是 package 的 type 和 deploy 的 strategy，现版本支持的配置对应方式如下
   - package.type=generic -> deploy.strategy=frontend-dist
@@ -116,11 +116,11 @@ deploy:
 
 `package.type=docker-container -> deploy.strategy=docker-run`
 
-脚本自动执行 `docker run -d <options> <镜像@digest> [<command>] [<args>]`。镜像地址由 Gitea 配置与 package digest 拼接，**不必在配置里写镜像**；`-d`（后台运行）由脚本默认添加，不必写在 `options` 里。
+同一镜像可配置**多个容器实例**：`deploy.containers` 为数组，每项对应一次 `docker run`。脚本按数组顺序逐个部署；任一实例失败则**全量回滚**（所有实例恢复旧 digest）。镜像地址由 Gitea 配置与 package digest 拼接，**不必在配置里写镜像**；`-d`（后台运行）由脚本默认添加。
 
-`options`、`command`、`args` 对应 `docker run [OPTIONS] IMAGE [COMMAND] [ARG...]` 中 IMAGE 之前/之后的部分；`command` 与 `args` 可选，不配则使用镜像默认 ENTRYPOINT/CMD。三者均支持 YAML 字符串数组或 `>-` 折叠块。
+每项的 `options`、`command`、`args` 对应 `docker run [OPTIONS] IMAGE [COMMAND] [ARG...]` 中 IMAGE 之前/之后的部分；`options` 必填，`command` 与 `args` 可选。均支持 YAML 字符串数组或 `>-` 折叠块。
 
-`options` 中必须包含 `--name`（或 `--name=xxx`），用于定位容器、部署前 `docker rm -f` 及跨服务唯一性校验。
+每项 `options` 中必须包含 `--name`（或 `--name=xxx`），用于定位容器、部署前 `docker rm -f` 及**跨 service 全局**唯一性校验。
 
 ```yaml
 package:
@@ -129,23 +129,21 @@ package:
   name: gitea-package名字
 deploy:
   strategy: docker-run
-  options: >-
-    --name my-api
-    -p 8080:8080
-    -e SPRING_PROFILES_ACTIVE=prod
-  command: java
-  args: >-
-    -jar /app/app.jar
   started-check-seconds: 5
+  containers:
+    - options: >-
+        --name my-api-1
+        -p 8080:8080
+        -e SPRING_PROFILES_ACTIVE=prod
+      command: java
+      args: >-
+        -jar /app/app.jar
+    - options: ["--name", "my-api-2", "-p", "8081:8080"]
+      command: ["java"]
+      args: ["-jar", "/app/app.jar"]
 ```
 
-数组写法等价：
-
-```yaml
-  options: ["--name", "my-api", "-p", "8080:8080"]
-  command: ["java"]
-  args: ["-jar", "/app/app.jar"]
-```
+单容器时 `containers` 仍须为数组（至少 1 项）。
 
 
 

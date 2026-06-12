@@ -1,12 +1,14 @@
 # docker-run 部署策略实现计划
 
-实现 `package.type=docker-container` + `deploy.strategy=docker-run` 部署策略：脚本自动拼接 `docker run -d ... {image}@{digest}`，用户仅配置 `options`/`command`/`args`；同步增强 `started-check-seconds: -1` 禁用稳定性检查（docker-compose 与 docker-run 共用）。
+> **多容器扩展**见 [docker-run-multi.plan.md](./docker-run-multi.plan.md)。当前版本使用 `deploy.containers[]` 数组，不再支持顶层 `deploy.options`。
+
+实现 `package.type=docker-container` + `deploy.strategy=docker-run` 部署策略：脚本自动拼接 `docker run -d ... {image}@{digest}`，用户配置 `deploy.containers[]` 中每项的 `options`/`command`/`args`；同步增强 `started-check-seconds: -1` 禁用稳定性检查（docker-compose 与 docker-run 共用）。
 
 ## 已确认的设计决策
 
 | 项 | 决定 |
 |----|------|
-| 配置字段 | `deploy.options`（必填）、`deploy.command`（可选）、`deploy.args`（可选） |
+| 配置字段 | `deploy.containers[]`：每项 `options`（必填）、`command`（可选）、`args`（可选） |
 | 字段格式 | 三者均支持 YAML 字符串数组 **或** `>-` 折叠块 |
 | 镜像拼接 | `{gitea_host}/{owner}/{name}@{digest}`（digest 来自 package 阶段 stdout） |
 | `-d` | 脚本默认附加；用户在 options 里写了 `-d` 则自动去重 |
@@ -67,31 +69,7 @@ rm -f → docker run → 稳定性检查 → 成功/回滚
 
 ## 配置示例
 
-```yaml
-- name: my-api
-  package:
-    type: docker-container
-    owner: Troy
-    name: my-api
-  deploy:
-    strategy: docker-run
-    options: >-
-      --name my-api
-      -p 8080:8080
-      -e SPRING_PROFILES_ACTIVE=prod
-    command: java
-    args: >-
-      -jar /app/app.jar
-    started-check-seconds: 5   # -1 禁用稳定性检查
-```
-
-数组写法：
-
-```yaml
-    options: ["--name", "my-api", "-p", "8080:8080"]
-    command: ["java"]
-    args: ["-jar", "/app/app.jar"]
-```
+见 [docker-run-multi.plan.md](./docker-run-multi.plan.md)。
 
 ## 任务清单
 
