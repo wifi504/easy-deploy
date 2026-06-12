@@ -18,6 +18,8 @@ gitea:
 logs:
   # logs目录下滚动覆盖，只保留最新的多少次执行的日志，配置为0时，不保留日志，配置为-1时，无上限
   max-log-history: 10
+  # 日志保留级别：always: 每次保留 | deploy: 有deploy执行才保留（默认）| error: 有worker错误才保留
+  level: deploy
 
 # 部署事件钩子（可选，默认配置文件可不包含此段）
 # 在关键时间点阻塞执行配置的 shell 命令；hook 命令失败不会中断部署流程
@@ -64,6 +66,19 @@ services:
     package: ...
     deploy: ...
 ```
+
+## 日志（logs）
+
+- `max-log-history`：在每次执行**开始**时，对 `logs/deploy-*` 目录做滚动清理（0 = 不保留历史；−1 = 无上限；N = 只保留最新 N 个目录）。
+- `level`：日志保留级别，默认 `deploy`。执行期间日志照常写入；仅在 agent **结束**时判断是否删除本次 `deploy-*` 目录。
+
+| level | 含义 |
+|-------|------|
+| `always` | 每次执行都保留日志目录 |
+| `deploy` | 至少有一个 service 实际进入 deploy 流程才保留；全部 skip 或仅 package 失败时删除 |
+| `error` | 至少有一个 worker 失败才保留；全部 worker 成功时删除 |
+
+`max-log-history` 与 `level` 配合使用：例如 `max-log-history: 10` 且 `level: deploy` 时，磁盘上最多保留最近 10 次**实际执行过 deploy** 的运行日志，适合定时任务频繁触发、多数运行无实际部署的场景。
 
 ## 服务配置
 

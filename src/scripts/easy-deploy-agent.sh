@@ -85,3 +85,7 @@ else
   run_hook on-agent-success
   log_msg "agent 已成功结束"
 fi
+
+# shellcheck source=lib/log-retention.sh
+source "${DEPLOY_ROOT}/lib/log-retention.sh"
+apply_log_retention "$failures"

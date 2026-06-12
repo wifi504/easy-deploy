@@ -191,6 +191,18 @@ validate_services() {
   fi
 }
 
+validate_logs() {
+  local level
+  level="$(cfg_raw '.logs.level')"
+  if [[ -z "$level" || "$level" == "null" ]]; then
+    return 0
+  fi
+  case "$level" in
+    always|deploy|error) ;;
+    *) validate_fail "logs.level 无效: ${level}（允许值: always | deploy | error）" ;;
+  esac
+}
+
 run_validate() {
   VALIDATE_ERRORS=()
   if [[ ! -f "$CONFIG_FILE" ]]; then
@@ -198,6 +210,7 @@ run_validate() {
     return 1
   fi
   validate_directories
+  validate_logs
   validate_dependencies
   validate_gitea
   validate_services

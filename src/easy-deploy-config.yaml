@@ -4,6 +4,10 @@ gitea:
 
 logs:
   max-log-history: 10
+  level: deploy
+
+hooks:
+  on-agent-start: "echo agent-start：${hook_current_time}"
 
 scripts:
   reload-nginx-cmd: "nginx -s reload"

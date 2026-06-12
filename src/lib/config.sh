@@ -88,6 +88,16 @@ max_log_history() {
   cfg_raw '.logs."max-log-history"'
 }
 
+log_level() {
+  local level
+  level="$(cfg_raw '.logs.level')"
+  if [[ -z "$level" || "$level" == "null" ]]; then
+    printf '%s' "deploy"
+  else
+    printf '%s' "$level"
+  fi
+}
+
 hook_cmd() {
   cfg_raw ".hooks.\"$1\""
 }
