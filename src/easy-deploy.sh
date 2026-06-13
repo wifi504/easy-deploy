@@ -13,6 +13,8 @@ DEPLOY_ROOT="$(cd "$(dirname "$_script")" && pwd)"
 unset _script _script_dir
 export DEPLOY_ROOT
 
+# 入口脚本：日志写文件并同步打印到控制台（install 后命令名为 easy-deploy，不能靠脚本名判断）
+EASY_DEPLOY_LOG_TO_CONSOLE=1
 # shellcheck source=lib/common.sh
 source "${DEPLOY_ROOT}/lib/common.sh"
 # shellcheck source=lib/logging.sh

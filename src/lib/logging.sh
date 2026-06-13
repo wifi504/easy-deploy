@@ -35,7 +35,12 @@ _log_file="${LOG_DIR}/${_log_name}"
 if [[ "${EASY_DEPLOY_LOGGING_INITIALIZED:-0}" != "1" ]]; then
   EASY_DEPLOY_LOGGING_INITIALIZED=1
   export LOG_DIR
-  exec > >(tee -a "$_log_file" >/dev/null) 2>&1
+  # 仅入口 easy-deploy 设 EASY_DEPLOY_LOG_TO_CONSOLE=1（勿 export，避免子进程继承）
+  if [[ "${EASY_DEPLOY_LOG_TO_CONSOLE:-0}" == "1" ]]; then
+    exec > >(tee -a "$_log_file") 2>&1
+  else
+    exec > >(tee -a "$_log_file" >/dev/null) 2>&1
+  fi
   log_msg "日志输出到 ${_log_file}"
 fi
 
