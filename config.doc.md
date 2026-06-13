@@ -31,10 +31,8 @@ hooks:
 scripts:
   # Nginx Reload 命令（存在 frontend-dist 服务时必填）
   reload-nginx-cmd: "docker exec nginx-container nginx -s reload"
-  # compose worker package 超时 / daemon 屏障等待上限（秒，默认 60）
+  # package 流程总超时（秒，默认 60）
   package-timeout-seconds: 60
-  # compose deploy 客户端入队到收到响应的超时（秒，默认 120）
-  deploy-timeout-seconds: 120
 
 # CD 流程要处理的服务，是个数组，具体配置详见下文 services 小节
 services:
@@ -66,6 +64,13 @@ services:
 | `error` | 至少有一个 worker 失败才保留；全部 worker 成功时删除 |
 
 `max-log-history` 与 `level` 配合使用：例如 `max-log-history: 10` 且 `level: deploy` 时，磁盘上最多保留最近 10 次**实际执行过 deploy** 的运行日志，适合定时任务频繁触发、多数运行无实际部署的场景。
+
+
+
+## 脚本（scripts）
+
+- `reload-nginx-cmd`：存在 `frontend-dist` 服务时必填；deploy 成功后执行，用于重载 Nginx。
+- `package-timeout-seconds`：单个 service 的 **package 流程总时间上限**（秒，默认 60）。worker 用 `timeout` 包裹 `package-generic.sh` / `package-docker-container.sh`，含 Gitea 查询、制品下载、`docker pull` 等全部步骤；超时则该 worker 失败，不进入 deploy。
 
 
 
@@ -114,11 +119,11 @@ deploy:
   started-check-seconds: 3
 ```
 
-`started-check-seconds` 说明：部署后等待指定秒数，检查容器是否仍在运行且未发生重启；配置为 `-1` 时跳过该检查，启动成功即视为部署成功。`docker-compose` 与 `docker-run` 均适用。多个 compose service 共享同一 yml 时，daemon 会对 batch 内各 service 的 `started-check-seconds` 做**升序阶梯**检查（例如 3 与 5 分别在第 3、5 秒检查对应 service）；`-1` 不参与等待。
+`started-check-seconds` 说明：部署后等待指定秒数，检查容器是否仍在运行且未发生重启；配置为 `-1` 时跳过该检查，启动成功即视为部署成功。`docker-compose` 与 `docker-run` 均适用；每个 service **独立**按自己的 `started-check-seconds` 检查，不做 batch 阶梯合并。
 
 多个 easy-deploy service 可指向**同一** `deploy.compose` 文件，但 **`deploy.compose` + `deploy.service` 组合全局唯一**（同一 compose 文件内不同 service 名须分别配置）。
 
-`docker-compose` 策略下，worker 的 deploy 步骤为薄客户端（入队 + 阻塞等待）；同 compose 文件的多个 digest service 由 **Compose Deploy Daemon** 批处理：一次 patch image、`docker compose up -d --no-deps --force-recreate`，失败时原子回滚整批。
+`docker-compose` 策略下，worker 调用 `deploy-docker-compose.sh` 完成单 service 部署：patch 一行 yml → `docker compose up -d --no-deps --force-recreate <composeService>` → 稳定性检查。同 compose 文件通过 `${composeFile}.easy-deploy.lock` + `flock` 串行，**允许部分成功**（A 成功、B 失败互不影响）；失败时仅回滚本 service 并写入本 service 的 `blocked_version_tag`。
 
 ### 拉取《Docker 镜像》 -> 部署《Docker Run》
 

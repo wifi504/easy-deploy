@@ -261,14 +261,10 @@ validate_logs() {
 }
 
 validate_scripts_timeouts() {
-  local pkg_timeout deploy_timeout
+  local pkg_timeout
   pkg_timeout="$(cfg_raw '.scripts."package-timeout-seconds"')"
-  deploy_timeout="$(cfg_raw '.scripts."deploy-timeout-seconds"')"
   if [[ -n "$pkg_timeout" && "$pkg_timeout" != "null" ]] && [[ ! "$pkg_timeout" =~ ^[1-9][0-9]*$ ]]; then
     validate_fail "scripts.package-timeout-seconds 必须是正整数"
-  fi
-  if [[ -n "$deploy_timeout" && "$deploy_timeout" != "null" ]] && [[ ! "$deploy_timeout" =~ ^[1-9][0-9]*$ ]]; then
-    validate_fail "scripts.deploy-timeout-seconds 必须是正整数"
   fi
 }
 

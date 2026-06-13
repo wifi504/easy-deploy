@@ -71,11 +71,11 @@ flowchart TD
 | [`deploy-docker-compose.sh`](../src/scripts/deploy-docker-compose.sh) | deploy 失败 + exit 前 |
 | [`deploy-docker-run.sh`](../src/scripts/deploy-docker-run.sh) | `_fail_deploy` 内 rollback 之后 |
 
-Compose batch：各 service 客户端各自写入本次 digest 的 blocked。不在 daemon 写。
+Compose 与 docker-run 均为 **per-service**：失败时仅本 service 写入 `blocked_version_tag`，sibling 不受影响。
 
 ### 4. 部署成功时清除 blocked
 
-[`deploy-docker-compose-stack.sh`](../src/scripts/deploy-docker-compose-stack.sh)、[`deploy-docker-run.sh`](../src/scripts/deploy-docker-run.sh) 已有 `versions_set`；在 `_versions_set_inner` 更新 `version_tag` 时清除 blocked 即可。
+[`deploy-docker-compose.sh`](../src/scripts/deploy-docker-compose.sh)、[`deploy-docker-run.sh`](../src/scripts/deploy-docker-run.sh) 调用 `versions_set`；在 `_versions_set_inner` 更新 `version_tag` 时清除 blocked 即可。
 
 ## 不在本次范围
 

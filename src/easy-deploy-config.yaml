@@ -11,8 +11,8 @@ hooks:
 
 scripts:
   reload-nginx-cmd: "nginx -s reload"
+  # package 流程总超时（秒）；generic 与 docker-container 均适用
   package-timeout-seconds: 60
-  deploy-timeout-seconds: 120
 
 services:
 

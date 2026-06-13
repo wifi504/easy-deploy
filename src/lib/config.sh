@@ -101,10 +101,6 @@ package_timeout_seconds() {
   _positive_int_or_default "$(cfg_raw '.scripts."package-timeout-seconds"')" "60"
 }
 
-deploy_timeout_seconds() {
-  _positive_int_or_default "$(cfg_raw '.scripts."deploy-timeout-seconds"')" "120"
-}
-
 max_log_history() {
   cfg_raw '.logs."max-log-history"'
 }

@@ -156,7 +156,7 @@ fi
 
 **errmsg 映射：**
 
-- compose down/up 失败 → `docker compose down/up 失败`
+- compose up 失败 → `docker compose up 失败`
 - 找不到容器 → `找不到 service {svc} 对应的容器`
 - up 后未运行 → `up 后容器未运行 (status={status})`
 - 稳定性检查失败 → `容器不稳定 (status={final}, 重启次数 {initial}->{final})`

@@ -1,3 +1,5 @@
+> **已 superseded**：本方案已被 [`compose-per-service.plan.md`](./compose-per-service.plan.md) 取代（去掉 Daemon、batch 与原子回滚，改为 per-service deploy + compose 文件 flock）。下文保留作历史设计记录。
+
 # Compose 多 service 共享编排 + Deploy Daemon
 
 > 在保留 **agent → 并行 worker（一 service 一 worker）→ package → deploy** 架构的前提下，将 compose deploy **队列化**：worker 内的 deploy 脚本仅作客户端入队并阻塞等待；真正改 yml / `docker compose up` 由 **Compose Deploy Daemon** 按 compose 文件批处理。
