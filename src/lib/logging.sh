@@ -35,7 +35,7 @@ _log_file="${LOG_DIR}/${_log_name}"
 if [[ "${EASY_DEPLOY_LOGGING_INITIALIZED:-0}" != "1" ]]; then
   EASY_DEPLOY_LOGGING_INITIALIZED=1
   export LOG_DIR
-  exec > >(tee -a "$_log_file") 2>&1
+  exec > >(tee -a "$_log_file" >/dev/null) 2>&1
   log_msg "日志输出到 ${_log_file}"
 fi
 

@@ -66,7 +66,7 @@ declare -a worker_names=()
 while IFS= read -r name; do
   [[ -z "$name" ]] && continue
   export SERVICE_NAME="$name"
-  bash "${DEPLOY_ROOT}/scripts/easy-deploy-worker.sh" "$name" &
+  EASY_DEPLOY_LOGGING_INITIALIZED=0 bash "${DEPLOY_ROOT}/scripts/easy-deploy-worker.sh" "$name" &
   worker_pids+=("$!")
   worker_names+=("$name")
 done < <(service_names)

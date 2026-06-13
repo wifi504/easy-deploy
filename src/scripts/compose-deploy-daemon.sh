@@ -176,13 +176,18 @@ handle_job_id() {
 printf '%s\n' "$$" >"$COMPOSE_DAEMON_PID_FILE"
 log_daemon "compose-deploy-daemon 已启动 (pid $$)"
 
+# 保持 fifo 读端常开：若每次 read 都重新 open，在无 writer 时会永久阻塞（-t 管不到 open），
+# agent 写入 shutdown 后 daemon 无法退出，部署锁也无法释放。
+COMPOSE_INBOX_FD=3
+eval "exec ${COMPOSE_INBOX_FD}<>\"${COMPOSE_INBOX_FIFO}\""
+
 while true; do
   if daemon_should_exit; then
     log_daemon "收到 shutdown，daemon 退出"
     break
   fi
 
-  if ! IFS= read -r -t 1 job_id <"$COMPOSE_INBOX_FIFO"; then
+  if ! IFS= read -r -t 1 job_id <&"${COMPOSE_INBOX_FD}"; then
     continue
   fi
 
@@ -191,4 +196,5 @@ while true; do
   handle_job_id "$job_id"
 done
 
+eval "exec ${COMPOSE_INBOX_FD}>&-"
 rm -f "$COMPOSE_DAEMON_PID_FILE"
