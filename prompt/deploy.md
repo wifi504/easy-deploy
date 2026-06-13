@@ -140,6 +140,13 @@ services:
 - `generic` 类型：存 Gitea 制品的 version 字符串
 - `docker-container` 类型：存完整 Digest，形如 `sha256:ca50457390a9eaa77abb7d7dff829f594db96fd2c0bc3901a7797b6fcc23ff19`
 
+**blocked_version_tag**（可选，仅 `docker-container`）：
+
+- 记录**最近一次部署失败且已回滚**时尝试的 digest；`version_tag` 仍为线上实际运行的旧 digest
+- 部署成功时随 `versions_set` 一并清除
+- package 时若 registry `:latest` 解析出的 digest **等于** `blocked_version_tag`，视为无新版本，返回 `skip_deploy`（不进入 deploy，与 digest 未变相同；`logs.level=deploy` 时不保留本次日志）
+- registry 出现**新的** digest 时会正常尝试 deploy；若再次失败则覆盖 `blocked_version_tag`
+
 结构如下
 
 ```json
@@ -147,11 +154,9 @@ services:
     "frontend-admin": {
         "version_tag": ""
     },
-    "order-service": {
-        "version_tag": ""
-    },
-    "其他service的名字": {
-        "version_tag": ""
+    "JavaBackend": {
+        "version_tag": "sha256:f663f34e...",
+        "blocked_version_tag": "sha256:47437343..."
     }
 }
 ```
@@ -324,7 +329,7 @@ Status: Image is up to date for 10.10.10.11:10088/pingworth-oc/go-oc-server:late
 
 无法成功pull，此脚本直接报错结束
 
-如果成功pull，从输出解析 `Digest: sha256:...`（或用 `docker inspect` 兜底），马上和 `current-versions.json` 里的记录做比对，如果相同，此脚本正常结束，返回 `skip_deploy`
+如果成功pull，从输出解析 `Digest: sha256:...`（或用 `docker inspect` 兜底），与 `current-versions.json` 比对：若与 `version_tag` 相同，或与 `blocked_version_tag` 相同（视为无新版本），此脚本正常结束，返回 `skip_deploy`
 
 **Step2. 删除旧的**
 

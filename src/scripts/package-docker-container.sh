@@ -67,6 +67,14 @@ if [[ "$digest" == "$current" ]]; then
   exit 0
 fi
 
+blocked="$(versions_get_blocked "$SERVICE_NAME")"
+if [[ -n "$blocked" && "$digest" == "$blocked" ]]; then
+  log_pkg "Digest 为已知失败版本 (${digest})，视为无新版本，跳过部署"
+  run_hook on-package-skip
+  echo "skip_deploy"
+  exit 0
+fi
+
 keep_new_id="$(docker inspect --format='{{.Id}}' "${repo_prefix}@${digest}" 2>/dev/null || true)"
 keep_old_id=""
 if [[ -n "$current" ]]; then

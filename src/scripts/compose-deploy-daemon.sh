@@ -80,16 +80,23 @@ process_compose_file() {
     fi
 
     compose_clear_batch_result "$compose_file"
+    local manifest_file stack_rc batch_result_file
+    manifest_file="${COMPOSE_DEPLOY_DIR}/batch-manifest/${enc}"
+    mkdir -p "$(dirname "$manifest_file")"
+    compose_build_batch_manifest "$compose_file" >"$manifest_file"
+
     stack_rc=0
-    if ! compose_build_batch_manifest "$compose_file" | \
-      bash "${DEPLOY_ROOT}/scripts/deploy-docker-compose-stack.sh" "$compose_file"; then
+    if ! bash "${DEPLOY_ROOT}/scripts/deploy-docker-compose-stack.sh" "$compose_file" <"$manifest_file"; then
       stack_rc=$?
     fi
+    rm -f "$manifest_file"
 
-    if [[ "$stack_rc" -eq 0 ]]; then
-      compose_succeed_jobs_for_file "$compose_file"
-    else
+    batch_result_file="$(compose_batch_result_file "$compose_file")"
+    if [[ -f "$batch_result_file" ]] || [[ "$stack_rc" -ne 0 ]]; then
+      log_daemon "compose stack 失败 (stack_rc=${stack_rc})，回写 job 失败响应"
       compose_fail_jobs_from_stack "$compose_file"
+    else
+      compose_succeed_jobs_for_file "$compose_file"
     fi
   ) &
 }

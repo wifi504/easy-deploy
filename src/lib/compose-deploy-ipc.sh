@@ -21,8 +21,12 @@ compose_path_encode() {
 
 compose_ipc_init() {
   mkdir -p "$COMPOSE_STATUS_DIR" "$COMPOSE_PENDING_DIR" \
-    "$COMPOSE_RESPONSES_DIR" "$COMPOSE_PROCESSING_DIR"
+    "$COMPOSE_RESPONSES_DIR" "$COMPOSE_PROCESSING_DIR" \
+    "${COMPOSE_DEPLOY_DIR}/batch-result" "${COMPOSE_DEPLOY_DIR}/batch-manifest"
   rm -f "$COMPOSE_DAEMON_SHUTDOWN_FILE"
+  rm -rf "${COMPOSE_STATUS_DIR:?}/"* "${COMPOSE_PENDING_DIR:?}/"* \
+    "${COMPOSE_RESPONSES_DIR:?}/"* "${COMPOSE_PROCESSING_DIR:?}/"* \
+    "${COMPOSE_DEPLOY_DIR}/batch-result/"* "${COMPOSE_DEPLOY_DIR}/batch-manifest/"*
   if [[ ! -p "$COMPOSE_INBOX_FIFO" ]]; then
     mkfifo "$COMPOSE_INBOX_FIFO"
   fi
@@ -325,6 +329,13 @@ compose_fail_jobs_from_stack() {
     fi
     compose_job_write_response "$job_id" "1" "$errmsg"
   done < <(compose_pending_jobs_for_file "$compose_file")
+}
+
+compose_job_response_field() {
+  local job_id="$1" field="$2"
+  local resp_file="${COMPOSE_RESPONSES_DIR}/${job_id}"
+  [[ -f "$resp_file" ]] || return 1
+  grep -E "^${field}=" "$resp_file" | head -1 | cut -d= -f2-
 }
 
 compose_job_wait() {

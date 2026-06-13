@@ -20,6 +20,8 @@ export hook_package_version_tag="$image_digest"
 source "${DEPLOY_ROOT}/lib/common.sh"
 # shellcheck source=lib/config.sh
 source "${DEPLOY_ROOT}/lib/config.sh"
+# shellcheck source=lib/versions.sh
+source "${DEPLOY_ROOT}/lib/versions.sh"
 # shellcheck source=lib/hooks.sh
 source "${DEPLOY_ROOT}/lib/hooks.sh"
 # shellcheck source=lib/compose-deploy-ipc.sh
@@ -27,6 +29,15 @@ source "${DEPLOY_ROOT}/lib/compose-deploy-ipc.sh"
 
 log_deploy() {
   echo "[$(TZ=Asia/Shanghai date '+%Y-%m-%d %H:%M:%S')] $*" >&2
+}
+
+_fail_compose_deploy() {
+  local errmsg="$1"
+  export hook_deploy_errmsg="$errmsg"
+  run_hook on-deploy-fail
+  versions_set_blocked "$SERVICE_NAME" "$image_digest"
+  log_deploy "$errmsg"
+  exit 1
 }
 
 compose_file="$(service_deploy_field "$SERVICE_NAME" compose)"
@@ -39,14 +50,18 @@ job_id="$(compose_job_submit "$SERVICE_NAME" "$compose_file" "$compose_service" 
 log_deploy "已入队 compose deploy job ${job_id} (${SERVICE_NAME})"
 
 wait_err=""
-if wait_err="$(compose_job_wait "$job_id" "$(deploy_timeout_seconds)")"; then
-  run_hook on-deploy-success
-  touch "${LOG_DIR}/.deploy-executed"
-  log_deploy "service ${SERVICE_NAME} compose deploy 成功"
-  exit 0
+if ! wait_err="$(compose_job_wait "$job_id" "$(deploy_timeout_seconds)")"; then
+  _fail_compose_deploy "${wait_err:-compose deploy 失败}"
 fi
 
-export hook_deploy_errmsg="${wait_err:-compose deploy 失败}"
-run_hook on-deploy-fail
-log_deploy "$hook_deploy_errmsg"
-exit 1
+# 二次校验 IPC 响应，避免 daemon 误写 exitCode=0
+resp_exit="$(compose_job_response_field "$job_id" exitCode || true)"
+if [[ "$resp_exit" != "0" ]]; then
+  wait_err="$(compose_job_response_field "$job_id" errmsg || true)"
+  _fail_compose_deploy "${wait_err:-compose deploy 失败}"
+fi
+
+run_hook on-deploy-success
+touch "${LOG_DIR}/.deploy-executed"
+log_deploy "service ${SERVICE_NAME} compose deploy 成功"
+exit 0

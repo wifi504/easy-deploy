@@ -29,6 +29,12 @@ versions_get() {
   jq -r --arg s "$service" '.[$s].version_tag // ""' "$VERSIONS_FILE"
 }
 
+versions_get_blocked() {
+  local service="$1"
+  _ensure_versions_file
+  jq -r --arg s "$service" '.[$s].blocked_version_tag // ""' "$VERSIONS_FILE"
+}
+
 versions_set() {
   local service="$1" tag="$2"
   _with_versions_lock _versions_set_inner "$service" "$tag"
@@ -39,7 +45,37 @@ _versions_set_inner() {
   local tmp
   tmp="$(mktemp)"
   jq --arg s "$service" --arg t "$tag" \
-    '.[$s] = {version_tag: $t}' \
+    '.[$s] = ((.[$s] // {}) | .version_tag = $t | del(.blocked_version_tag))' \
+    "$VERSIONS_FILE" >"$tmp"
+  mv "$tmp" "$VERSIONS_FILE"
+}
+
+versions_set_blocked() {
+  local service="$1" tag="$2"
+  _with_versions_lock _versions_set_blocked_inner "$service" "$tag"
+}
+
+_versions_set_blocked_inner() {
+  local service="$1" tag="$2"
+  local tmp
+  tmp="$(mktemp)"
+  jq --arg s "$service" --arg b "$tag" \
+    '.[$s] = ((.[$s] // {}) | .blocked_version_tag = $b)' \
+    "$VERSIONS_FILE" >"$tmp"
+  mv "$tmp" "$VERSIONS_FILE"
+}
+
+versions_clear_blocked() {
+  local service="$1"
+  _with_versions_lock _versions_clear_blocked_inner "$service"
+}
+
+_versions_clear_blocked_inner() {
+  local service="$1"
+  local tmp
+  tmp="$(mktemp)"
+  jq --arg s "$service" \
+    'if .[$s] then .[$s] |= del(.blocked_version_tag) else . end' \
     "$VERSIONS_FILE" >"$tmp"
   mv "$tmp" "$VERSIONS_FILE"
 }
@@ -49,18 +85,24 @@ versions_ensure() {
 }
 
 _versions_ensure_inner() {
-  local tmp merged
+  local tmp merged name existing blocked
   tmp="$(mktemp)"
   merged="$(mktemp)"
 
   jq -n '{}' >"$merged"
   while IFS= read -r name; do
     [[ -z "$name" ]] && continue
-    local existing
     existing="$(jq -r --arg s "$name" '.[$s].version_tag // ""' "$VERSIONS_FILE" 2>/dev/null || echo "")"
-    jq --arg s "$name" --arg t "$existing" \
-      '.[$s] = {version_tag: $t}' \
-      "$merged" >"$tmp"
+    blocked="$(jq -r --arg s "$name" '.[$s].blocked_version_tag // empty' "$VERSIONS_FILE" 2>/dev/null || true)"
+    if [[ -n "$blocked" ]]; then
+      jq --arg s "$name" --arg t "$existing" --arg b "$blocked" \
+        '.[$s] = {version_tag: $t, blocked_version_tag: $b}' \
+        "$merged" >"$tmp"
+    else
+      jq --arg s "$name" --arg t "$existing" \
+        '.[$s] = {version_tag: $t}' \
+        "$merged" >"$tmp"
+    fi
     mv "$tmp" "$merged"
   done < <(service_names)
 

@@ -105,6 +105,7 @@ _fail_deploy() {
   run_hook on-deploy-fail
   log_deploy "$1"
   rollback_all
+  versions_set_blocked "$SERVICE_NAME" "$image_digest"
   exit 1
 }
 
