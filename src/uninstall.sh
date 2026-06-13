@@ -107,6 +107,7 @@ case "$pkg_mgr" in
     remove_apt unzip
     remove_apt tar
     remove_apt p7zip-full
+    remove_apt gzip
     ;;
   dnf|yum)
     remove_yum "$pkg_mgr" curl
@@ -115,6 +116,7 @@ case "$pkg_mgr" in
     remove_yum "$pkg_mgr" unzip
     remove_yum "$pkg_mgr" tar
     remove_yum "$pkg_mgr" p7zip
+    remove_yum "$pkg_mgr" gzip
     ;;
   *)
     echo "未知包管理器，跳过系统包卸载"

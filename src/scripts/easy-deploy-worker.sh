@@ -20,8 +20,32 @@ source "${DEPLOY_ROOT}/lib/common.sh"
 source "${DEPLOY_ROOT}/lib/logging.sh"
 # shellcheck source=lib/config.sh
 source "${DEPLOY_ROOT}/lib/config.sh"
+# shellcheck source=lib/versions.sh
+source "${DEPLOY_ROOT}/lib/versions.sh"
+# shellcheck source=lib/service-config-hash.sh
+source "${DEPLOY_ROOT}/lib/service-config-hash.sh"
+
+_worker_persist_config_hash() {
+  local hash
+  hash="$(service_config_hash "$SERVICE_NAME")"
+  versions_set_config_hash "$SERVICE_NAME" "$hash"
+}
+
+trap _worker_persist_config_hash EXIT
 
 log_msg "worker 已启动，service: ${SERVICE_NAME}"
+
+stored_hash="$(versions_get_config_hash "$SERVICE_NAME")"
+current_hash="$(service_config_hash "$SERVICE_NAME")"
+force_redeploy=0
+if [[ -z "$stored_hash" || "$stored_hash" != "$current_hash" ]]; then
+  force_redeploy=1
+  if [[ -z "$stored_hash" ]]; then
+    log_msg "service ${SERVICE_NAME} 尚无 config_hash，强制 package+deploy"
+  else
+    log_msg "service ${SERVICE_NAME} 配置已变更，强制 package+deploy"
+  fi
+fi
 
 pkg_type="$(service_package_type "$SERVICE_NAME")"
 strategy="$(service_deploy_strategy "$SERVICE_NAME")"
@@ -42,13 +66,18 @@ esac
 
 mkdir -p "$(dirname "$pkg_log")"
 
+pkg_args=("$SERVICE_NAME")
+if [[ "$force_redeploy" -eq 1 ]]; then
+  pkg_args+=("force")
+fi
+
 pkg_output=""
 pkg_rc=0
 pkg_timeout="$(package_timeout_seconds)"
 
 export EASY_DEPLOY_PAYLOAD_MODE=1
 set +e
-pkg_output="$(timeout "${pkg_timeout}" bash "$package_script" "$SERVICE_NAME" 2>>"$pkg_log")"
+pkg_output="$(timeout "${pkg_timeout}" bash "$package_script" "${pkg_args[@]}" 2>>"$pkg_log")"
 pkg_rc=$?
 set -e
 if [[ "$pkg_rc" -eq 124 ]]; then
@@ -70,6 +99,9 @@ fi
 last_line="${pkg_lines[-1]}"
 
 if [[ "$last_line" == "skip_deploy" ]]; then
+  if [[ "$force_redeploy" -eq 1 ]]; then
+    die "service ${SERVICE_NAME} 强制 package 仍返回 skip_deploy"
+  fi
   log_msg "service ${SERVICE_NAME} 版本未变，跳过部署"
   exit 0
 fi

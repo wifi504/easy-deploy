@@ -56,7 +56,7 @@ record_preexisting_deps() {
     case "$mgr" in
       apt)
         local pkg
-        for pkg in curl jq unzip tar p7zip-full; do
+        for pkg in curl jq unzip tar p7zip-full gzip; do
           if is_apt_pkg_installed "$pkg"; then
             echo "preexisting_pkg=${pkg}"
           fi
@@ -68,7 +68,7 @@ record_preexisting_deps() {
         ;;
       dnf|yum)
         local pkg
-        for pkg in curl jq unzip tar p7zip; do
+        for pkg in curl jq unzip tar p7zip gzip; do
           if is_yum_pkg_installed "$pkg"; then
             echo "preexisting_pkg=${pkg}"
           fi
@@ -148,12 +148,12 @@ ensure_mikefarah_yq() {
 
 install_packages_apt() {
   $SUDO apt-get update
-  $SUDO apt-get install -y curl jq unzip tar p7zip-full
+  $SUDO apt-get install -y curl jq unzip tar p7zip-full gzip
 }
 
 install_packages_yum() {
   local mgr="$1"
-  $SUDO "$mgr" install -y curl jq unzip tar p7zip p7zip-plugins
+  $SUDO "$mgr" install -y curl jq unzip tar p7zip p7zip-plugins gzip
 }
 
 check_docker() {
@@ -169,6 +169,22 @@ check_docker() {
   fi
   log "docker 与 docker compose 已就绪"
   return 0
+}
+
+check_config_hash_utils() {
+  local ok=1
+  if ! command -v gzip >/dev/null 2>&1; then
+    log "未找到 gzip（config_hash 计算需要；install 已尝试安装 gzip 包）"
+    ok=0
+  fi
+  if ! command -v sha256sum >/dev/null 2>&1; then
+    log "未找到 sha256sum（config_hash 计算需要；通常来自 coreutils，请安装 coreutils）"
+    ok=0
+  fi
+  if [[ "$ok" -eq 1 ]]; then
+    log "gzip 与 sha256sum 已就绪"
+  fi
+  return $((1 - ok))
 }
 
 EASY_DEPLOY_CMD="/usr/local/bin/easy-deploy"
@@ -188,7 +204,7 @@ pkg_mgr="$(detect_pkg_manager)"
 case "$pkg_mgr" in
   apt|dnf|yum) ;;
   *)
-    log "不支持的包管理器，请手动安装: curl jq unzip tar 7z，并安装 mikefarah/yq"
+    log "不支持的包管理器，请手动安装: curl jq unzip tar 7z gzip coreutils（sha256sum），并安装 mikefarah/yq"
     exit 1
     ;;
 esac
@@ -204,6 +220,8 @@ esac
 ensure_mikefarah_yq
 
 log "脚本依赖已安装"
+
+check_config_hash_utils || true
 
 check_docker || true
 

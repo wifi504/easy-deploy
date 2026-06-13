@@ -6,13 +6,17 @@ set -euo pipefail
 DEPLOY_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 export DEPLOY_ROOT
 
-if [[ $# -ne 1 ]]; then
-  echo "用法: package-generic.sh <serviceName>" >&2
+if [[ $# -lt 1 || $# -gt 2 ]]; then
+  echo "用法: package-generic.sh <serviceName> [force]" >&2
   exit 1
 fi
 
 SERVICE_NAME="$1"
 export hook_service_name="$SERVICE_NAME"
+FORCE=0
+if [[ $# -eq 2 && ( "$2" == "force" || "$2" == "--force" ) ]]; then
+  FORCE=1
+fi
 
 # shellcheck source=lib/common.sh
 source "${DEPLOY_ROOT}/lib/common.sh"
@@ -54,11 +58,15 @@ if [[ -z "$version" ]]; then
 fi
 
 current="$(versions_get "$SERVICE_NAME")"
-if [[ "$version" == "$current" ]]; then
+if [[ "$FORCE" -eq 0 && "$version" == "$current" ]]; then
   log_pkg "版本未变 (${version})，跳过部署"
   run_hook on-package-skip
   echo "skip_deploy"
   exit 0
+fi
+
+if [[ "$FORCE" -eq 1 && "$version" == "$current" ]]; then
+  log_pkg "配置已变更，强制重新下载版本 ${version}"
 fi
 
 download_url="${base_url}/api/packages/${owner}/generic/${pkg_name}/${version}/${pkg_file}"

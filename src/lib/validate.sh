@@ -68,6 +68,8 @@ validate_dependencies() {
   require_command unzip
   require_command tar
   require_command 7z
+  require_command gzip
+  require_command sha256sum
   if ! docker compose version >/dev/null 2>&1; then
     validate_fail "docker compose (V2) 不可用"
   fi

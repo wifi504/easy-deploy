@@ -37,8 +37,7 @@ _read_yq_argv_field() {
 
 read_deploy_argv_field() {
   local service="$1" field="$2"
-  local -n _out="$3"
-  _read_yq_argv_field ".services[] | select(.name == \"${service}\") | .deploy.${field}" _out
+  _read_yq_argv_field ".services[] | select(.name == \"${service}\") | .deploy.${field}" "$3"
 }
 
 docker_run_container_count() {
@@ -55,8 +54,7 @@ docker_run_container_count() {
 
 read_container_argv_field() {
   local service="$1" index="$2" field="$3"
-  local -n _out="$4"
-  _read_yq_argv_field ".services[] | select(.name == \"${service}\") | .deploy.containers[${index}].${field}" _out
+  _read_yq_argv_field ".services[] | select(.name == \"${service}\") | .deploy.containers[${index}].${field}" "$4"
 }
 
 parse_container_name_from_argv() {

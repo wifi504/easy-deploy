@@ -6,13 +6,17 @@ set -euo pipefail
 DEPLOY_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 export DEPLOY_ROOT
 
-if [[ $# -ne 1 ]]; then
-  echo "用法: package-docker-container.sh <serviceName>" >&2
+if [[ $# -lt 1 || $# -gt 2 ]]; then
+  echo "用法: package-docker-container.sh <serviceName> [force]" >&2
   exit 1
 fi
 
 SERVICE_NAME="$1"
 export hook_service_name="$SERVICE_NAME"
+FORCE=0
+if [[ $# -eq 2 && ( "$2" == "force" || "$2" == "--force" ) ]]; then
+  FORCE=1
+fi
 
 # shellcheck source=lib/common.sh
 source "${DEPLOY_ROOT}/lib/common.sh"
@@ -60,7 +64,7 @@ if [[ -z "$digest" || "$digest" != sha256:* ]]; then
 fi
 
 current="$(versions_get "$SERVICE_NAME")"
-if [[ "$digest" == "$current" ]]; then
+if [[ "$FORCE" -eq 0 && "$digest" == "$current" ]]; then
   log_pkg "Digest 未变 (${digest})，跳过部署"
   run_hook on-package-skip
   echo "skip_deploy"
@@ -68,11 +72,15 @@ if [[ "$digest" == "$current" ]]; then
 fi
 
 blocked="$(versions_get_blocked "$SERVICE_NAME")"
-if [[ -n "$blocked" && "$digest" == "$blocked" ]]; then
+if [[ "$FORCE" -eq 0 && -n "$blocked" && "$digest" == "$blocked" ]]; then
   log_pkg "Digest 为已知失败版本 (${digest})，视为无新版本，跳过部署"
   run_hook on-package-skip
   echo "skip_deploy"
   exit 0
+fi
+
+if [[ "$FORCE" -eq 1 ]]; then
+  log_pkg "配置已变更，强制 deploy Digest ${digest}"
 fi
 
 keep_new_id="$(docker inspect --format='{{.Id}}' "${repo_prefix}@${digest}" 2>/dev/null || true)"

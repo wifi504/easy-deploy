@@ -35,6 +35,27 @@ versions_get_blocked() {
   jq -r --arg s "$service" '.[$s].blocked_version_tag // ""' "$VERSIONS_FILE"
 }
 
+versions_get_config_hash() {
+  local service="$1"
+  _ensure_versions_file
+  jq -r --arg s "$service" '.[$s].config_hash // ""' "$VERSIONS_FILE"
+}
+
+versions_set_config_hash() {
+  local service="$1" hash="$2"
+  _with_versions_lock _versions_set_config_hash_inner "$service" "$hash"
+}
+
+_versions_set_config_hash_inner() {
+  local service="$1" hash="$2"
+  local tmp
+  tmp="$(mktemp)"
+  jq --arg s "$service" --arg h "$hash" \
+    '.[$s] = ((.[$s] // {}) | .config_hash = $h)' \
+    "$VERSIONS_FILE" >"$tmp"
+  mv "$tmp" "$VERSIONS_FILE"
+}
+
 versions_set() {
   local service="$1" tag="$2"
   _with_versions_lock _versions_set_inner "$service" "$tag"
@@ -85,7 +106,7 @@ versions_ensure() {
 }
 
 _versions_ensure_inner() {
-  local tmp merged name existing blocked
+  local tmp merged name existing blocked config_hash
   tmp="$(mktemp)"
   merged="$(mktemp)"
 
@@ -94,9 +115,18 @@ _versions_ensure_inner() {
     [[ -z "$name" ]] && continue
     existing="$(jq -r --arg s "$name" '.[$s].version_tag // ""' "$VERSIONS_FILE" 2>/dev/null || echo "")"
     blocked="$(jq -r --arg s "$name" '.[$s].blocked_version_tag // empty' "$VERSIONS_FILE" 2>/dev/null || true)"
-    if [[ -n "$blocked" ]]; then
+    config_hash="$(jq -r --arg s "$name" '.[$s].config_hash // empty' "$VERSIONS_FILE" 2>/dev/null || true)"
+    if [[ -n "$blocked" && -n "$config_hash" ]]; then
+      jq --arg s "$name" --arg t "$existing" --arg b "$blocked" --arg h "$config_hash" \
+        '.[$s] = {version_tag: $t, blocked_version_tag: $b, config_hash: $h}' \
+        "$merged" >"$tmp"
+    elif [[ -n "$blocked" ]]; then
       jq --arg s "$name" --arg t "$existing" --arg b "$blocked" \
         '.[$s] = {version_tag: $t, blocked_version_tag: $b}' \
+        "$merged" >"$tmp"
+    elif [[ -n "$config_hash" ]]; then
+      jq --arg s "$name" --arg t "$existing" --arg h "$config_hash" \
+        '.[$s] = {version_tag: $t, config_hash: $h}' \
         "$merged" >"$tmp"
     else
       jq --arg s "$name" --arg t "$existing" \
