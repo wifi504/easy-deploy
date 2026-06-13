@@ -54,9 +54,10 @@ compose_ipc_init
 
 COMPOSE_DAEMON_PID=""
 if compose_config_has_services; then
-  bash "${DEPLOY_ROOT}/scripts/compose-deploy-daemon.sh" &
+  # 子进程会继承 agent 的 stdout/stderr；重置标志让 daemon 写入独立日志文件
+  EASY_DEPLOY_LOGGING_INITIALIZED=0 bash "${DEPLOY_ROOT}/scripts/compose-deploy-daemon.sh" &
   COMPOSE_DAEMON_PID=$!
-  log_msg "compose-deploy-daemon 已后台启动 (pid ${COMPOSE_DAEMON_PID})"
+  log_msg "compose-deploy-daemon 已后台启动 (pid ${COMPOSE_DAEMON_PID})，日志: ${LOG_DIR}/compose-deploy-daemon.sh.log"
 fi
 
 declare -a worker_pids=()
