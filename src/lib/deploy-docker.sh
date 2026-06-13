@@ -197,7 +197,7 @@ compose_batch_stability_check() {
     snap_status+=("${_snap[0]}")
     snap_restarts+=("${_snap[1]}")
     if [[ "${snap_status[$i]}" != "running" ]]; then
-      printf '%s' "up 后容器未运行 (service=${svc_names[$i]}, status=${snap_status[$i]})"
+      printf '%s' "${svc_names[$i]}: up 后容器未运行 (status=${snap_status[$i]})"
       return 1
     fi
   done

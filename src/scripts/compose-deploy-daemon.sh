@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Compose Deploy Daemon：按 compose 文件批处理 deploy job
+# Compose Deploy Daemon：按 compose 文件批处理 deploy job（仅队列与 IPC，不触发 hook）
 
 set -euo pipefail
 
@@ -12,51 +12,11 @@ source "${DEPLOY_ROOT}/lib/common.sh"
 source "${DEPLOY_ROOT}/lib/logging.sh"
 # shellcheck source=lib/config.sh
 source "${DEPLOY_ROOT}/lib/config.sh"
-# shellcheck source=lib/hooks.sh
-source "${DEPLOY_ROOT}/lib/hooks.sh"
 # shellcheck source=lib/compose-deploy-ipc.sh
 source "${DEPLOY_ROOT}/lib/compose-deploy-ipc.sh"
 
 log_daemon() {
   echo "[$(TZ=Asia/Shanghai date '+%Y-%m-%d %H:%M:%S')] $*"
-}
-
-compose_respond_job() {
-  local job_id="$1" exit_code="$2" errmsg="$3"
-  local service_name digest
-
-  service_name="$(compose_job_read_field "$job_id" serviceName)"
-  digest="$(compose_job_read_field "$job_id" digest)"
-
-  export hook_service_name="$service_name"
-  export hook_package_version_tag="$digest"
-
-  if [[ "$exit_code" == "0" ]]; then
-    run_hook on-deploy-success
-  else
-    export hook_deploy_errmsg="$errmsg"
-    run_hook on-deploy-fail
-  fi
-
-  compose_job_write_response "$job_id" "$exit_code" "$errmsg"
-}
-
-compose_fail_jobs() {
-  local compose_file="$1" errmsg="$2"
-  local job_id
-  while IFS= read -r job_id; do
-    [[ -z "$job_id" ]] && continue
-    compose_respond_job "$job_id" "1" "$errmsg"
-  done < <(compose_pending_jobs_for_file "$compose_file")
-}
-
-compose_succeed_jobs() {
-  local compose_file="$1"
-  local job_id
-  while IFS= read -r job_id; do
-    [[ -z "$job_id" ]] && continue
-    compose_respond_job "$job_id" "0" ""
-  done < <(compose_pending_jobs_for_file "$compose_file")
 }
 
 compose_build_batch_manifest() {
@@ -74,7 +34,7 @@ compose_build_batch_manifest() {
 
 process_compose_file() {
   local compose_file="$1"
-  local enc processing_marker timeout_sec start now elapsed stack_err
+  local enc processing_marker timeout_sec start now elapsed stack_rc
 
   enc="$(compose_path_encode "$compose_file")"
   processing_marker="${COMPOSE_PROCESSING_DIR}/${enc}"
@@ -92,20 +52,20 @@ process_compose_file() {
 
     while ! compose_barrier_satisfied "$compose_file"; do
       if compose_barrier_any_fail "$compose_file"; then
-        compose_fail_jobs "$compose_file" "同 compose 文件存在 package 失败的 sibling service"
+        compose_fail_jobs_for_sibling_package "$compose_file"
         exit 0
       fi
       now="$(date +%s)"
       elapsed=$((now - start))
       if (( elapsed >= timeout_sec )); then
-        compose_fail_jobs "$compose_file" "等待同 compose 文件 sibling service 超时 (${timeout_sec}s)"
+        compose_fail_jobs_for_barrier_timeout "$compose_file" "$timeout_sec"
         exit 0
       fi
       sleep 0.2
     done
 
     if compose_barrier_any_fail "$compose_file"; then
-      compose_fail_jobs "$compose_file" "同 compose 文件存在 package 失败的 sibling service"
+      compose_fail_jobs_for_sibling_package "$compose_file"
       exit 0
     fi
 
@@ -119,6 +79,7 @@ process_compose_file() {
       exit 0
     fi
 
+    compose_clear_batch_result "$compose_file"
     stack_rc=0
     if ! compose_build_batch_manifest "$compose_file" | \
       bash "${DEPLOY_ROOT}/scripts/deploy-docker-compose-stack.sh" "$compose_file"; then
@@ -126,9 +87,9 @@ process_compose_file() {
     fi
 
     if [[ "$stack_rc" -eq 0 ]]; then
-      compose_succeed_jobs "$compose_file"
+      compose_succeed_jobs_for_file "$compose_file"
     else
-      compose_fail_jobs "$compose_file" "compose stack 部署失败"
+      compose_fail_jobs_from_stack "$compose_file"
     fi
   ) &
 }
@@ -166,7 +127,7 @@ handle_job_id() {
   compose_file="$(compose_job_read_field "$job_id" composeFile)"
   if [[ -z "$compose_file" ]]; then
     log_daemon "job ${job_id} 缺少 composeFile"
-    compose_respond_job "$job_id" "1" "job 配置无效"
+    compose_job_write_response "$job_id" "1" "job 配置无效"
     return 0
   fi
 

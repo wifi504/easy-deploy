@@ -17,6 +17,8 @@ COMPOSE_FILE="$1"
 source "${DEPLOY_ROOT}/lib/common.sh"
 # shellcheck source=lib/config.sh
 source "${DEPLOY_ROOT}/lib/config.sh"
+# shellcheck source=lib/compose-deploy-ipc.sh
+source "${DEPLOY_ROOT}/lib/compose-deploy-ipc.sh"
 # shellcheck source=lib/versions.sh
 source "${DEPLOY_ROOT}/lib/versions.sh"
 # shellcheck source=lib/deploy-docker.sh
@@ -76,6 +78,7 @@ up_services=("${BATCH_COMPOSE_SERVICES[@]}")
 log_stack "执行: docker compose up -d --no-deps --force-recreate ${up_services[*]}"
 if ! docker compose -f "$COMPOSE_FILE" up -d --no-deps --force-recreate "${up_services[@]}"; then
   log_stack "docker compose up 失败，开始回滚"
+  compose_write_batch_failure "$COMPOSE_FILE" "" "docker compose up 失败"
   cp "$backup_file" "$COMPOSE_FILE"
   docker compose -f "$COMPOSE_FILE" up -d --no-deps --force-recreate "${up_services[@]}" || true
   for ((i = 0; i < ${#BATCH_SERVICE_NAMES[@]}; i++)); do
@@ -95,6 +98,7 @@ for ((i = 0; i < ${#BATCH_COMPOSE_SERVICES[@]}; i++)); do
   container_id="$(docker compose -f "$COMPOSE_FILE" ps -q "$compose_svc")"
   if [[ -z "$container_id" ]]; then
     log_stack "找不到 service ${compose_svc} 对应的容器，开始回滚"
+    compose_write_batch_failure "$COMPOSE_FILE" "$compose_svc" "找不到 service ${compose_svc} 对应的容器"
     cp "$backup_file" "$COMPOSE_FILE"
     docker compose -f "$COMPOSE_FILE" up -d --no-deps --force-recreate "${up_services[@]}" || true
     for ((j = 0; j < ${#BATCH_SERVICE_NAMES[@]}; j++)); do
@@ -112,6 +116,7 @@ done
 stability_err=""
 if ! stability_err="$(printf '%s' "$stability_input" | compose_batch_stability_check)"; then
   log_stack "稳定性检查失败: ${stability_err}，开始回滚"
+  compose_write_batch_failure "$COMPOSE_FILE" "${stability_err%%:*}" "${stability_err#*: }"
   cp "$backup_file" "$COMPOSE_FILE"
   docker compose -f "$COMPOSE_FILE" up -d --no-deps --force-recreate "${up_services[@]}" || true
   for ((j = 0; j < ${#BATCH_SERVICE_NAMES[@]}; j++)); do
@@ -134,5 +139,6 @@ for ((i = 0; i < ${#BATCH_SERVICE_NAMES[@]}; i++)); do
 done
 
 rm -f "$backup_file"
+compose_clear_batch_result "$COMPOSE_FILE"
 log_stack "compose stack 部署成功 (${#BATCH_SERVICE_NAMES[@]} 个 service)"
 exit 0

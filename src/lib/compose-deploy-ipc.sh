@@ -180,6 +180,153 @@ compose_job_write_response() {
   rm -f "${COMPOSE_PENDING_DIR}/${job_id}"
 }
 
+# 将 compose 文件内的 compose service 名映射为 easy-deploy service 名
+compose_easy_name_for_compose_service() {
+  local compose_file="$1" compose_svc="$2"
+  local name strategy compose deploy_svc
+  while IFS= read -r name; do
+    [[ -z "$name" ]] && continue
+    strategy="$(service_deploy_strategy "$name")"
+    if [[ "$strategy" != "docker-compose" ]]; then
+      continue
+    fi
+    compose="$(service_deploy_field "$name" compose)"
+    deploy_svc="$(service_deploy_field "$name" service)"
+    if [[ "$compose" == "$compose_file" && "$deploy_svc" == "$compose_svc" ]]; then
+      printf '%s' "$name"
+      return 0
+    fi
+  done < <(service_names)
+  printf '%s' "$compose_svc"
+}
+
+compose_first_failed_service_for_file() {
+  local compose_file="$1"
+  local svc status
+  while IFS= read -r svc; do
+    [[ -z "$svc" ]] && continue
+    status="$(compose_status_get "$svc" 2>/dev/null || true)"
+    if [[ "$status" == "fail" ]]; then
+      printf '%s' "$svc"
+      return 0
+    fi
+  done < <(compose_services_for_file "$compose_file")
+  return 1
+}
+
+compose_barrier_blocking_service() {
+  local compose_file="$1"
+  local svc status
+  while IFS= read -r svc; do
+    [[ -z "$svc" ]] && continue
+    if ! compose_status_get "$svc" >/dev/null 2>&1; then
+      printf '%s' "$svc"
+      return 0
+    fi
+    status="$(compose_status_get "$svc")"
+    if [[ "$status" == "digest" ]] && ! compose_pending_job_for_service "$svc" >/dev/null; then
+      printf '%s' "$svc"
+      return 0
+    fi
+  done < <(compose_services_for_file "$compose_file")
+  return 1
+}
+
+compose_batch_result_file() {
+  local compose_file="$1"
+  printf '%s/batch-result/%s' "$COMPOSE_DEPLOY_DIR" "$(compose_path_encode "$compose_file")"
+}
+
+compose_write_batch_failure() {
+  local compose_file="$1" failed_compose_svc="$2" failed_reason="$3"
+  local result_file
+  result_file="$(compose_batch_result_file "$compose_file")"
+  mkdir -p "$(dirname "$result_file")"
+  {
+    printf 'failedComposeService=%s\n' "$failed_compose_svc"
+    printf 'failedReason=%s\n' "$failed_reason"
+  } >"$result_file"
+}
+
+compose_clear_batch_result() {
+  local compose_file="$1"
+  rm -f "$(compose_batch_result_file "$compose_file")"
+}
+
+compose_succeed_jobs_for_file() {
+  local compose_file="$1"
+  local job_id
+  while IFS= read -r job_id; do
+    [[ -z "$job_id" ]] && continue
+    compose_job_write_response "$job_id" "0" ""
+  done < <(compose_pending_jobs_for_file "$compose_file")
+}
+
+compose_fail_jobs_for_sibling_package() {
+  local compose_file="$1"
+  local cause_svc="${2:-}"
+  local job_id errmsg
+  if [[ -z "$cause_svc" ]]; then
+    cause_svc="$(compose_first_failed_service_for_file "$compose_file")"
+  fi
+  if [[ -z "$cause_svc" ]]; then
+    cause_svc="unknown"
+  fi
+  while IFS= read -r job_id; do
+    [[ -z "$job_id" ]] && continue
+    errmsg="同 compose 文件 service ${cause_svc} package 失败"
+    compose_job_write_response "$job_id" "1" "$errmsg"
+  done < <(compose_pending_jobs_for_file "$compose_file")
+}
+
+compose_fail_jobs_for_barrier_timeout() {
+  local compose_file="$1" timeout_sec="$2"
+  local blocking_svc job_id errmsg
+  blocking_svc="$(compose_barrier_blocking_service "$compose_file")"
+  while IFS= read -r job_id; do
+    [[ -z "$job_id" ]] && continue
+    if [[ -n "$blocking_svc" ]]; then
+      errmsg="同 compose 文件 service ${blocking_svc} 未在 package 时限内就绪 (等待超时 ${timeout_sec}s)"
+    else
+      errmsg="等待同 compose 文件 sibling service 超时 (${timeout_sec}s)"
+    fi
+    compose_job_write_response "$job_id" "1" "$errmsg"
+  done < <(compose_pending_jobs_for_file "$compose_file")
+}
+
+compose_fail_jobs_from_stack() {
+  local compose_file="$1"
+  local result_file failed_compose_svc failed_reason cause_easy_name
+  local job_id svc_name compose_svc errmsg
+
+  failed_compose_svc=""
+  failed_reason="compose stack 部署失败"
+  result_file="$(compose_batch_result_file "$compose_file")"
+  if [[ -f "$result_file" ]]; then
+    failed_compose_svc="$(grep -E '^failedComposeService=' "$result_file" | head -1 | cut -d= -f2-)"
+    failed_reason="$(grep -E '^failedReason=' "$result_file" | head -1 | cut -d= -f2-)"
+    rm -f "$result_file"
+  fi
+
+  cause_easy_name=""
+  if [[ -n "$failed_compose_svc" ]]; then
+    cause_easy_name="$(compose_easy_name_for_compose_service "$compose_file" "$failed_compose_svc")"
+  fi
+
+  while IFS= read -r job_id; do
+    [[ -z "$job_id" ]] && continue
+    compose_svc="$(compose_job_read_field "$job_id" composeService)"
+    if [[ -n "$failed_compose_svc" && "$compose_svc" == "$failed_compose_svc" ]]; then
+      errmsg="$failed_reason"
+    elif [[ -n "$failed_compose_svc" ]]; then
+      errmsg="同 compose 文件 service ${cause_easy_name} 部署失败: ${failed_reason}"
+    else
+      errmsg="$failed_reason"
+    fi
+    compose_job_write_response "$job_id" "1" "$errmsg"
+  done < <(compose_pending_jobs_for_file "$compose_file")
+}
+
 compose_job_wait() {
   local job_id="$1"
   local timeout_sec="${2:-$(deploy_timeout_seconds)}"
