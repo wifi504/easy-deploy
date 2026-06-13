@@ -48,7 +48,7 @@ flowchart TD
 
 [`src/lib/service-config-hash.sh`](../src/lib/service-config-hash.sh)：
 
-1. yq 提取 `{package, deploy}`，`-o=yaml -I 2`
+1. yq 提取 service 条目并 `del(.name)`（等价于 package+deploy），`-o=yaml -I 2`
 2. `gzip -cn`
 3. `sha256sum` → `sha256:<hex>`
 
@@ -60,4 +60,4 @@ flowchart TD
 - [x] `easy-deploy-worker.sh` 入口比对 + EXIT trap
 - [x] `validate.sh` 检测 gzip / sha256sum
 - [x] 更新 `install.sh` / `uninstall.sh`（gzip 包；sha256sum 仅检测）
-- [x] 更新 `prompt/deploy.md`、`config.doc.md`
+- [x] 更新 `prompt/deploy.md`、`config.doc.md`、`prompt/hook.md`（hook 触发时机）

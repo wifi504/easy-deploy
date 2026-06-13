@@ -91,14 +91,19 @@ hook_cmd() { cfg_raw ".hooks.\"$1\""; }
 ### [`easy-deploy-agent.sh`](../src/scripts/easy-deploy-agent.sh)
 
 - `source lib/hooks.sh`
-- 第 45 行 `log_msg "easy-deploy-agent 已启动"` **之后**：`run_hook on-agent-start`
-- temp 清理块 **之后**、最终 summary 日志 **之前**：
-  - `failures > 0` → `export hook_fail_count="$failures"` + `run_hook on-agent-fail`
-  - 否则 → `run_hook on-agent-success`
+- 启动日志 **之后**、`versions_ensure` **之前**：`on-agent-start`
+- temp 清理 **之后**、summary **之前**：`on-agent-success` / `on-agent-fail`（`hook_fail_count`）
+
+| 时机 | hook |
+|------|------|
+| 启动 worker 前 | `on-agent-start` |
+| 全部 worker 成功且 temp 清理后 | `on-agent-success` |
+| 存在 worker 失败且 temp 清理后 | `on-agent-fail` |
 
 ### [`easy-deploy-worker.sh`](../src/scripts/easy-deploy-worker.sh)
 
 - **不**触发 package/deploy hook（已在子脚本内）
+- **不**因 config_hash 比对 / EXIT 回存 hash 触发 hook
 - **修复 deploy 退出码检测**（两处 deploy 调用均改为）：
 
 ```bash
@@ -114,7 +119,8 @@ fi
 | 时机 | hook | 备注 |
 |------|------|------|
 | 参数校验后、拉取前 | `on-package-start` | |
-| 版本相同 | `on-package-skip` | 在 `echo skip_deploy` 之前 |
+| 版本相同且 **非 force** | `on-package-skip` | 在 `echo skip_deploy` 之前 |
+| **force** 且版本相同 | `on-package-success` | 仍重新下载 |
 | curl/jq/下载失败 | `on-package-fail` | errmsg 见下 |
 | 下载成功、echo 前 | `on-package-success` | `hook_package_version_tag=$version` |
 
@@ -128,7 +134,15 @@ fi
 
 ### [`package-docker-container.sh`](../src/scripts/package-docker-container.sh)
 
-同上结构；errmsg：
+| 时机 | hook | 备注 |
+|------|------|------|
+| pull 前 | `on-package-start` | |
+| digest == `version_tag` 且非 force | `on-package-skip` | |
+| digest == `blocked_version_tag` 且非 force | `on-package-skip` | |
+| **force** | `on-package-success` |  bypass skip/blocked |
+| pull/解析失败 | `on-package-fail` | |
+
+errmsg：
 
 - docker pull 失败 → `docker pull 失败`
 - 无法确定 Digest → `无法确定镜像 Digest`
@@ -139,9 +153,10 @@ fi
 
 | 时机 | hook |
 |------|------|
-| 参数校验后 | `on-deploy-start` |
-| 最后一行成功日志前 | `on-deploy-success` |
-| 各失败 exit 前 | `on-deploy-fail` |
+| 解压前 | `on-deploy-start` |
+| `versions_set` + nginx reload 成功后 | `on-deploy-success` |
+| 解压/部署失败 | `on-deploy-fail` |
+| nginx reload 失败（**已** `versions_set`） | `on-deploy-fail` |
 
 **errmsg 映射：**
 
@@ -154,6 +169,12 @@ fi
 
 ### [`deploy-docker-compose.sh`](../src/scripts/deploy-docker-compose.sh)
 
+| 时机 | hook |
+|------|------|
+| flock / 改 yml 前 | `on-deploy-start` |
+| `versions_set`、删旧镜像后 | `on-deploy-success` |
+| 回滚 yml + recreate 后 | `on-deploy-fail` → 再 `versions_set_blocked` |
+
 **errmsg 映射：**
 
 - compose up 失败 → `docker compose up 失败`
@@ -162,6 +183,14 @@ fi
 - 稳定性检查失败 → `容器不稳定 (status={final}, 重启次数 {initial}->{final})`
 
 成功路径在 `versions_set` 之后、`log_deploy` 完成日志之前触发 `on-deploy-success`。
+
+### [`deploy-docker-run.sh`](../src/scripts/deploy-docker-run.sh)
+
+| 时机 | hook |
+|------|------|
+| 容器循环前 | `on-deploy-start` |
+| 全部容器通过、`versions_set` 后 | `on-deploy-success` |
+| 失败时 | `on-deploy-fail` **先于** `rollback_all` → `versions_set_blocked` |
 
 ## 文档更新
 
@@ -210,4 +239,4 @@ fi
 - [x] 在 `package-generic.sh` 与 `package-docker-container.sh` 插入四级 hook 及 errmsg helper
 - [x] 在 `deploy-frontend-dist.sh` 与 `deploy-docker-compose.sh` 插入三级 hook 及 errmsg helper
 - [x] 修复 `easy-deploy-worker.sh` deploy 子进程退出码检测
-- [x] 更新 `config.doc.md`：`logs` 与 `scripts` 之间增加 hooks 段说明与注释示例
+- [x] 更新 `config.doc.md`、`prompt/deploy.md`、`prompt/hook.md`：force / blocked / config_hash、compose vs run 失败顺序

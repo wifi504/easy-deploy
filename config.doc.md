@@ -181,13 +181,13 @@ hooks:
   on-agent-success: "echo agent-end，成功"
   # 部署 Agent 失败结束，${hook_fail_count} 为失败的 worker 数量
   on-agent-fail: "echo agent-end，失败了 ${hook_fail_count} 个 worker"
-  # package 流程开始时
+  # package 流程开始时（查 Gitea / docker pull 前）
   on-package-start: "echo ${hook_service_name} 开始拉取新版本"
-  # package 成功获取新制品，${hook_package_version_tag} 为将写入 current-versions.json 的版本
+  # package 成功且本次将进入 deploy（含 force 下同 version/digest）
   on-package-success: "echo ${hook_service_name} 拉取到了新制品，版本为：${hook_package_version_tag}"
-  # package 获取新制品失败（不含版本相同跳过），${hook_package_errmsg} 为失败原因
+  # package 失败（不含 skip）
   on-package-fail: "echo ${hook_service_name} 获取新制品时失败，原因是：${hook_package_errmsg}"
-  # package 检测到版本与当前一致
+  # 正常 skip：version/digest 未变，或 digest 命中 blocked（force 模式不触发）
   on-package-skip: "echo ${hook_service_name} 已经是最新版本，无需部署"
   # deploy 流程开始时
   on-deploy-start: "echo ${hook_service_name} 开始部署"
@@ -201,16 +201,26 @@ hooks:
 
 | Hook | 触发时机 |
 |------|----------|
-| `on-agent-start` | Agent 启动后、启动 worker 前 |
-| `on-agent-success` | 全部 worker 成功且 temp 清理后 |
-| `on-agent-fail` | 存在 worker 失败且 temp 清理后 |
-| `on-package-start` | 单个 service 的 package 流程开始 |
-| `on-package-success` | 成功拉取到新制品 |
-| `on-package-fail` | 拉取新制品失败（不含版本相同跳过） |
-| `on-package-skip` | 检测到版本与当前一致，跳过部署 |
-| `on-deploy-start` | 单个 service 的 deploy 流程开始 |
-| `on-deploy-success` | deploy 成功结束 |
-| `on-deploy-fail` | deploy 失败结束 |
+| `on-agent-start` | Agent 启动后、`versions_ensure` 与启动 worker **之前** |
+| `on-agent-success` | 全部 worker 成功且 `data/temp/` 清理 **之后** |
+| `on-agent-fail` | 存在 worker 失败且 temp 清理 **之后** |
+| `on-package-start` | 单个 service 的 package 开始（拉取/下载 **之前**） |
+| `on-package-success` | package 成功且**将进入 deploy**（新 version/digest，或 config 变更 **force** 下同 version/digest） |
+| `on-package-fail` | package 失败（pull/下载/解析等；**不含** skip） |
+| `on-package-skip` | 正常模式 skip：version/digest 未变，或 digest 等于 `blocked_version_tag`；**不进入 deploy**；**force 模式不触发** |
+| `on-deploy-start` | 单个 service 的 deploy 脚本开始执行时（具体见下表） |
+| `on-deploy-success` | deploy 全流程成功（compose/run 在 `versions_set` **之后**；frontend 在 nginx reload **之后**） |
+| `on-deploy-fail` | deploy 失败；`hook_deploy_errmsg` 为原因 |
+
+Hook 在 `package-*.sh`、`deploy-*.sh`、`easy-deploy-agent.sh` 内触发；**worker 与 config_hash 逻辑不触发 hook**。命令失败不中断部署。
+
+#### `on-deploy-*` 按 deploy.strategy
+
+| strategy | 脚本 | `on-deploy-start` | `on-deploy-success` | `on-deploy-fail` |
+|----------|------|-------------------|---------------------|------------------|
+| `frontend-dist` | `deploy-frontend-dist.sh` | 解压前 | `versions_set` + nginx reload 成功后 | 解压/覆盖失败；或已 `versions_set` 但 nginx reload 失败 |
+| `docker-compose` | `deploy-docker-compose.sh` | flock / 改 yml 前 | `versions_set`、删旧镜像后 | **先回滚** compose service → hook → `versions_set_blocked` |
+| `docker-run` | `deploy-docker-run.sh` | 首个 `docker run` 前 | 全部容器检查通过、`versions_set` 后 | **先** hook → 再回滚全部容器 → `versions_set_blocked` |
 
 ### 动态变量（`${hook_*}`）
 
