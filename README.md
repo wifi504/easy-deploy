@@ -109,7 +109,7 @@ easy-deploy
 [2026-06-09 10:42:00] 已成功开始执行自动化部署，日志目录：/opt/easy-deploy/logs/deploy-20260609-104200
 ```
 
-Agent 及各 service 的 worker / package / deploy 日志都在该 `deploy-*` 目录下。
+入口脚本的每次触发都会追加到 `logs/easy-deploy.log`。成功拿到部署锁后，Agent 及各 service 的 worker / package / deploy 日志都在本次 `deploy-*` 目录下；如果拿不到锁，则不会创建新的 `deploy-*` 目录。
 
 **Tips：手动运行部署脚本能正常工作以后，可以添加到定时任务自动化执行**
 

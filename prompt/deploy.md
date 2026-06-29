@@ -115,13 +115,13 @@ services:
 
 ### 关于日志
 
-每次运行 easy-deploy.sh，也就是从入口进去，先在 `./logs/` 创建一个格式为 `deploy-20260102-121233` 的目录，日期时间用 **UTC+8 中国时间**（`TZ=Asia/Shanghai`）。
+每次运行 easy-deploy.sh，入口输出先追加到 `./logs/easy-deploy.log`。只有校验通过并成功拿到部署锁后，才在 `./logs/` 创建一个格式为 `deploy-20260102-121233` 的目录，日期时间用 **UTC+8 中国时间**（`TZ=Asia/Shanghai`）。拿不到锁的运行只记录到外层入口日志，不创建 `deploy-*` 目录。
 
 **easy-deploy.sh 必须无参直接运行**，不然就不 easy 了。
 
 日志采集方式：公共 `lib/logging.sh`，各脚本启动时 `source` 后通过 `exec tee` 把 stdout 和 stderr 同时写到对应 log 文件。父进程只需 `export LOG_DIR`（以及 worker 场景下的 `SERVICE_NAME`），子脚本自动按「执行的 shell 文件名 + 区分 key + .log」规则写入，具体存的就是整个执行期间所有 shell 脚本要打印的所有东西。
 
-创建本次 log 目录后，立刻按 `logs.max-log-history` 滚动清理旧的 `deploy-*` 目录（0 = 不保留历史；−1 = 无上限；N = 只保留最新 N 次）。
+创建本次 log 目录后，立刻按 `logs.max-log-history` 滚动清理旧的 `deploy-*` 目录（0 = 不保留历史；−1 = 无上限；N = 只保留最新 N 次）。外层 `logs/easy-deploy.log` 不参与该轮转。
 
 ### 关于版本
 

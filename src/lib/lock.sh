@@ -17,5 +17,4 @@ acquire_deploy_lock() {
 
 release_deploy_lock() {
   flock -u "${DEPLOY_LOCK_FD}" 2>/dev/null || true
-  rm -f "${LOCK_FILE}"
 }

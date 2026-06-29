@@ -54,7 +54,7 @@ services:
 
 ## 日志（logs）
 
-- `max-log-history`：在每次执行**开始**时，对 `logs/deploy-*` 目录做滚动清理（0 = 不保留历史；−1 = 无上限；N = 只保留最新 N 个目录）。
+- `max-log-history`：拿到部署锁并创建本次 `logs/deploy-*` 目录后，对 `logs/deploy-*` 目录做滚动清理（0 = 不保留历史；−1 = 无上限；N = 只保留最新 N 个目录）。未拿到锁的入口尝试只追加到 `logs/easy-deploy.log`，不创建 `deploy-*` 目录。
 - `level`：日志保留级别，默认 `deploy`。执行期间日志照常写入；仅在 agent **结束**时判断是否删除本次 `deploy-*` 目录。
 
 | level | 含义 |

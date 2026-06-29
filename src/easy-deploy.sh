@@ -13,12 +13,14 @@ DEPLOY_ROOT="$(cd "$(dirname "$_script")" && pwd)"
 unset _script _script_dir
 export DEPLOY_ROOT
 
-# 入口脚本：日志写文件并同步打印到控制台（install 后命令名为 easy-deploy，不能靠脚本名判断）
-EASY_DEPLOY_LOG_TO_CONSOLE=1
 # shellcheck source=lib/common.sh
 source "${DEPLOY_ROOT}/lib/common.sh"
-# shellcheck source=lib/logging.sh
-source "${DEPLOY_ROOT}/lib/logging.sh"
+
+ENTRY_LOG_FILE="${DEPLOY_ROOT}/logs/easy-deploy.log"
+mkdir -p "$(dirname "$ENTRY_LOG_FILE")"
+exec > >(tee -a "$ENTRY_LOG_FILE") 2>&1
+log_msg "入口日志输出到 ${ENTRY_LOG_FILE}"
+
 # shellcheck source=lib/config.sh
 source "${DEPLOY_ROOT}/lib/config.sh"
 # shellcheck source=lib/validate.sh
@@ -58,14 +60,16 @@ if ! run_validate; then
   exit 1
 fi
 
-rotate_logs
-
 if ! acquire_deploy_lock; then
   log_msg "已有部署任务在运行，无法获取锁"
   exit 0
 fi
 
+LOG_DIR="${DEPLOY_ROOT}/logs/deploy-$(TZ=Asia/Shanghai date +%Y%m%d-%H%M%S)"
 export LOG_DIR
+mkdir -p "$LOG_DIR"
+rotate_logs
+
 #  stdout/stderr 接到 /dev/null，避免继承入口 tee 导致前台卡住；日志由 agent 内 logging.sh 写入
 nohup bash "${DEPLOY_ROOT}/scripts/easy-deploy-agent.sh" "${DEPLOY_LOCK_FD}" \
   </dev/null >/dev/null 2>&1 &
