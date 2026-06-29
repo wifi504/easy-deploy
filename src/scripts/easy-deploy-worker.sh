@@ -26,8 +26,14 @@ source "${DEPLOY_ROOT}/lib/versions.sh"
 source "${DEPLOY_ROOT}/lib/service-config-hash.sh"
 
 _worker_persist_config_hash() {
-  local hash
-  hash="$(service_config_hash "$SERVICE_NAME")"
+  local hash="${current_hash:-}"
+  if ! versions_file_readable; then
+    log_msg "current-versions.json 已存在但无法读取，跳过 config_hash 回存"
+    return 0
+  fi
+  if [[ -z "$hash" ]]; then
+    hash="$(service_config_hash "$SERVICE_NAME")"
+  fi
   versions_set_config_hash "$SERVICE_NAME" "$hash"
 }
 
@@ -35,8 +41,15 @@ trap _worker_persist_config_hash EXIT
 
 log_msg "worker 已启动，service: ${SERVICE_NAME}"
 
+if ! versions_file_readable; then
+  log_msg "current-versions.json 已存在但无法读取，跳过 service ${SERVICE_NAME} 本轮处理"
+  exit 0
+fi
+
 stored_hash="$(versions_get_config_hash "$SERVICE_NAME")"
 current_hash="$(service_config_hash "$SERVICE_NAME")"
+versions_set_config_hash "$SERVICE_NAME" "$current_hash"
+log_msg "service ${SERVICE_NAME} 已记录 config_hash"
 force_redeploy=0
 if [[ -z "$stored_hash" || "$stored_hash" != "$current_hash" ]]; then
   force_redeploy=1

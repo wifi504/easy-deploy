@@ -72,7 +72,7 @@ services:
 - `reload-nginx-cmd`：存在 `frontend-dist` 服务时必填；deploy 成功后执行，用于重载 Nginx。
 - `package-timeout-seconds`：单个 service 的 **package 流程总时间上限**（秒，默认 60）。worker 用 `timeout` 包裹 `package-generic.sh` / `package-docker-container.sh`，含 Gitea 查询、制品下载、`docker pull` 等全部步骤；超时则该 worker 失败，不进入 deploy。
 
-**配置变更触发 redeploy**：`current-versions.json` 中每个 service 另有 `config_hash`（对该 service 的 package + deploy 段 hash）。worker 启动时若 hash 缺失或与当前配置不一致，会以 `force` 模式强制 package + deploy（即使制品版本/digest 未变）。详见 [config-hash.plan.md](./prompt/config-hash.plan.md)。
+**配置变更触发 redeploy**：`current-versions.json` 中每个 service 另有 `config_hash`（对该 service 的 package + deploy 段 hash）。worker 启动时若 hash 缺失或与当前配置不一致，会以 `force` 模式强制 package + deploy（即使制品版本/digest 未变）。如果 `current-versions.json` 不存在，按首次运行初始化；如果文件已存在但不可读或不是合法 JSON，则跳过本轮，避免误判为版本为空后强制部署。详见 [config-hash.plan.md](./prompt/config-hash.plan.md)。
 
 
 

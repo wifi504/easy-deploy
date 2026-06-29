@@ -14,17 +14,22 @@
 | 比对时机 | **worker 一进来**先算 hash，不再在 `skip_deploy` 分支二次比对 |
 | config 变化 | 强制 package + deploy；package 脚本支持 **force 入参** |
 | blocked digest | force 时 **绕过** `digest == blocked_version_tag` 的 skip（配置变更优先） |
-| hash 回存 | worker **任意退出**（成功 / package 失败 / deploy 失败）均回存；deploy 失败后下次 hash 已对齐，package 会正常 hit blocked 并 skip |
+| hash 回存 | worker 计算当前 hash 后立即回存，并在 **任意退出**（成功 / package 失败 / deploy 失败）时用 EXIT trap 兜底回存；deploy 失败后下次 hash 已对齐，package 会正常 hit blocked 并 skip |
 | 迁移 | 缺 `config_hash` 视为不匹配 → **首次 force redeploy** 写入初始 hash |
+| 状态文件异常 | `current-versions.json` 不存在时初始化；已存在但不可读或不是合法 JSON 时跳过本轮，避免误判为空版本 |
+| 写入原子性 | 临时文件创建在 `data/` 同目录后再替换 `current-versions.json`，避免跨文件系统 `mv` 的非原子窗口 |
 
 ## 流程（新 worker 逻辑）
 
 ```mermaid
 flowchart TD
   start[worker start] --> hash[compute config_hash from package+deploy]
-  hash --> cmp{hash == stored config_hash?}
-  cmp -->|no or empty| force[force=true]
-  cmp -->|yes| forceOff[force=false]
+  hash --> readable{current-versions readable?}
+  readable -->|no and exists| skipRound[skip this round]
+  readable -->|yes or missing| cmp{hash == stored config_hash?}
+  cmp --> saveNow[versions_set_config_hash current hash]
+  saveNow -->|no or empty| force[force=true]
+  saveNow -->|yes| forceOff[force=false]
   force --> pkg[package with force flag]
   forceOff --> pkg2[package normal]
   pkg --> skip{last line skip_deploy?}
@@ -35,13 +40,13 @@ flowchart TD
   trueSkip --> exitTrap
   endOk --> exitTrap
   fail[die anywhere] --> exitTrap
-  exitTrap[EXIT trap] --> save[versions_set_config_hash fresh hash]
+  exitTrap[EXIT trap] --> save[versions_set_config_hash current hash]
 ```
 
 **与 blocked 的配合**：
 
 1. 改配置 → hash 变 → force deploy 失败 → `blocked_version_tag` 照常写入
-2. EXIT trap 回存新 `config_hash`
+2. 计算后立即回存新 `config_hash`，EXIT trap 兜底回存
 3. 下次 cron：hash 匹配 → 不 force → package 见 blocked → `skip_deploy` → 不再反复 deploy
 
 ## Hash 算法

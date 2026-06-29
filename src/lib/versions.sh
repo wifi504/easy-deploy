@@ -13,6 +13,18 @@ _ensure_versions_file() {
   fi
 }
 
+versions_file_readable() {
+  if [[ ! -e "$VERSIONS_FILE" ]]; then
+    return 0
+  fi
+  [[ -r "$VERSIONS_FILE" ]] || return 1
+  jq -e 'type == "object"' "$VERSIONS_FILE" >/dev/null 2>&1
+}
+
+_versions_tmp_file() {
+  mktemp "${DEPLOY_ROOT}/data/current-versions.XXXXXX"
+}
+
 _with_versions_lock() {
   _ensure_versions_file
   mkdir -p "${DEPLOY_ROOT}/data"
@@ -49,7 +61,7 @@ versions_set_config_hash() {
 _versions_set_config_hash_inner() {
   local service="$1" hash="$2"
   local tmp
-  tmp="$(mktemp)"
+  tmp="$(_versions_tmp_file)"
   jq --arg s "$service" --arg h "$hash" \
     '.[$s] = ((.[$s] // {}) | .config_hash = $h)' \
     "$VERSIONS_FILE" >"$tmp"
@@ -64,7 +76,7 @@ versions_set() {
 _versions_set_inner() {
   local service="$1" tag="$2"
   local tmp
-  tmp="$(mktemp)"
+  tmp="$(_versions_tmp_file)"
   jq --arg s "$service" --arg t "$tag" \
     '.[$s] = ((.[$s] // {}) | .version_tag = $t | del(.blocked_version_tag))' \
     "$VERSIONS_FILE" >"$tmp"
@@ -79,7 +91,7 @@ versions_set_blocked() {
 _versions_set_blocked_inner() {
   local service="$1" tag="$2"
   local tmp
-  tmp="$(mktemp)"
+  tmp="$(_versions_tmp_file)"
   jq --arg s "$service" --arg b "$tag" \
     '.[$s] = ((.[$s] // {}) | .blocked_version_tag = $b)' \
     "$VERSIONS_FILE" >"$tmp"
@@ -94,7 +106,7 @@ versions_clear_blocked() {
 _versions_clear_blocked_inner() {
   local service="$1"
   local tmp
-  tmp="$(mktemp)"
+  tmp="$(_versions_tmp_file)"
   jq --arg s "$service" \
     'if .[$s] then .[$s] |= del(.blocked_version_tag) else . end' \
     "$VERSIONS_FILE" >"$tmp"
@@ -107,8 +119,13 @@ versions_ensure() {
 
 _versions_ensure_inner() {
   local tmp merged name existing blocked config_hash
-  tmp="$(mktemp)"
-  merged="$(mktemp)"
+
+  if ! versions_file_readable; then
+    die "current-versions.json 已存在但无法读取，跳过本轮"
+  fi
+
+  tmp="$(_versions_tmp_file)"
+  merged="$(_versions_tmp_file)"
 
   jq -n '{}' >"$merged"
   while IFS= read -r name; do
