@@ -2,6 +2,10 @@
 
 让运维更简单 - 可以自动化完成前后端制品部署的 CD 流程 Shell 脚本
 
+> **Shell 版本已过时，停止维护（2026-10-26）。** 最终版本为 [`shell-final`](https://github.com/wifi504/easy-deploy/releases/tag/shell-final)，源码保存在 [`archive/shell`](https://github.com/wifi504/easy-deploy/tree/archive/shell) 分支。此版本仅供现有用户继续使用和历史参考，不再增加功能或提供维护更新。后续计划使用 Go 重写，提供单二进制程序和 Web 配置界面；Go 版本尚未发布。
+>
+> 下载 Shell 归档版请使用固定地址：`https://github.com/wifi504/easy-deploy/releases/download/shell-final/easy-deploy.tar.gz`。下文为 Shell 归档版使用说明。
+
 ## 项目结构介绍
 
 此项目也算是 Vibe Coding 的一个小实践，`AI Rate > 90%`
@@ -31,10 +35,12 @@ easy-deploy/
 
 ### 安装
 
-在部署机上，随便找个目录，推荐 `/opt/` ，直接使用如下命令下载最新版本到当前目录的 `easy-deploy/`：
+在部署机上，随便找个目录，推荐 `/opt/` ，直接使用如下命令下载最终 Shell 版本到当前目录的 `easy-deploy/`：
+
+**目录权限**：下载和解压需要当前目录可写。普通用户建议先执行 `cd ~`，下载解压后再按需使用管理员权限移动到 `/opt/`。`curl: (23)` 表示本地写入失败，请检查目录/同名文件权限、磁盘剩余空间（例如 `ls -ld /opt`、`df -h /opt`）。
 
 ```bash
-curl -fsSL -o easy-deploy.tar.gz https://github.com/wifi504/easy-deploy/releases/latest/download/easy-deploy.tar.gz && mkdir -p easy-deploy && tar -xzf easy-deploy.tar.gz -C easy-deploy && rm -f easy-deploy.tar.gz
+curl -fsSL -o easy-deploy.tar.gz https://github.com/wifi504/easy-deploy/releases/download/shell-final/easy-deploy.tar.gz && mkdir -p easy-deploy && tar -xzf easy-deploy.tar.gz -C easy-deploy && rm -f easy-deploy.tar.gz
 ```
 
 下载完成后进入目录：
@@ -66,11 +72,11 @@ Fedora 等部分发行版可通过 `dnf install yq` 直接装到 mikefarah/yq，
 
 ### 更新
 
-一般情况下不需要更新，**除非遇到了严重的 bug，请提 issue**。
+Shell 版本已停止维护，不再提供更新。以下命令仅用于重新安装最终归档版。
 
 `data/` 可选备份：主要是已部署版本的记录，删掉后下次运行会视作所有任务都要重新跑一遍；一般只保留 `easy-deploy-config.yaml` 即可。
 
-在**部署目录的上一级**（例如 `/opt/`，与初次安装时相同）执行以下命令，可**保留配置并更新脚本到最新版**；`uninstall.sh` 会逐项询问 y/n，按提示选择即可：
+在**部署目录的上一级**（例如 `/opt/`，与初次安装时相同）执行以下命令，可**保留配置并重新安装最终 Shell 版**；`uninstall.sh` 会逐项询问 y/n，按提示选择即可：
 
 ```bash
 cd easy-deploy
@@ -78,13 +84,13 @@ bash uninstall.sh
 mv easy-deploy-config.yaml ../
 cd ..
 rm -rf easy-deploy
-curl -fsSL -o easy-deploy.tar.gz https://github.com/wifi504/easy-deploy/releases/latest/download/easy-deploy.tar.gz && mkdir -p easy-deploy && tar -xzf easy-deploy.tar.gz -C easy-deploy && rm -f easy-deploy.tar.gz
+curl -fsSL -o easy-deploy.tar.gz https://github.com/wifi504/easy-deploy/releases/download/shell-final/easy-deploy.tar.gz && mkdir -p easy-deploy && tar -xzf easy-deploy.tar.gz -C easy-deploy && rm -f easy-deploy.tar.gz
 cd easy-deploy
 bash install.sh
 mv ../easy-deploy-config.yaml .
 ```
 
-若要安装**指定版本**，把上面 `curl` 里的 `latest` 换成 release Tag，例如 `release-99`：
+若要安装**指定版本**，把上面 `curl` 里的 `shell-final` 换成 release Tag，例如 `release-99`：
 
 ```bash
 curl -fsSL -o easy-deploy.tar.gz https://github.com/wifi504/easy-deploy/releases/download/release-99/easy-deploy.tar.gz && mkdir -p easy-deploy && tar -xzf easy-deploy.tar.gz -C easy-deploy && rm -f easy-deploy.tar.gz

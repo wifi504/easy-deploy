@@ -2,8 +2,8 @@ name: Release
 
 on:
   push:
-    branches:
-      - master
+    tags:
+      - shell-final
 
 permissions:
   contents: write
@@ -21,14 +21,18 @@ jobs:
       - name: Upload to Release
         uses: softprops/action-gh-release@v2
         with:
-          tag_name: release-${{ github.run_number }}
-          name: release-${{ github.run_number }}
+          tag_name: shell-final
+          name: Shell final (archived)
           body: |
-            master @ ${{ github.sha }}
+            最终 Shell 归档版本，停止维护，不再增加功能或提供维护更新。
+            源码分支：archive/shell
+            后续计划使用 Go 重写并提供 Web 配置界面，Go 版本尚未发布。
+            commit: ${{ github.sha }}
 
             安装：
             ```bash
-            curl -fsSL -o easy-deploy.tar.gz https://github.com/wifi504/easy-deploy/releases/latest/download/easy-deploy.tar.gz && mkdir -p easy-deploy && tar -xzf easy-deploy.tar.gz -C easy-deploy && rm -f easy-deploy.tar.gz
+            curl -fsSL -o easy-deploy.tar.gz https://github.com/wifi504/easy-deploy/releases/download/shell-final/easy-deploy.tar.gz && mkdir -p easy-deploy && tar -xzf easy-deploy.tar.gz -C easy-deploy && rm -f easy-deploy.tar.gz
             ```
+            请在可写目录中下载解压，普通用户可先执行 `cd ~`；放到 /opt 可能需要管理员权限。
           files: easy-deploy.tar.gz
           make_latest: true
